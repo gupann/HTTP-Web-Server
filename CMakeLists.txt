@@ -38,7 +38,11 @@ include_directories(include)
 # add_library(example_lib src/example_lib.cc)
 
 # Build echo server executable + link with the Boost system library
-add_executable(server src/server_main.cc)
+add_executable(server
+    src/webserver_main.cc
+    src/server.cc
+    src/session.cc
+)
 target_link_libraries(server Boost::system)
 
 # TODO(!): Update test executable name, srcs, and deps
