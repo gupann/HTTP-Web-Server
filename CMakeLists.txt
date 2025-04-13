@@ -34,16 +34,19 @@ message(STATUS "Boost version: ${Boost_VERSION}")
 
 include_directories(include)
 
-# TODO(!): Update name and srcs
-# add_library(example_lib src/example_lib.cc)
+# Compile config_parser into a library
+add_library(config_parser src/config_parser.cc)
 
-# Build echo server executable + link with the Boost system library
-add_executable(server
+# Build echo server executable + link with the Boost system library and parser library
+add_executable(webserver
     src/webserver_main.cc
     src/server.cc
     src/session.cc
 )
-target_link_libraries(server Boost::system)
+target_link_libraries(webserver
+    Boost::system
+    config_parser
+)
 
 # TODO(!): Update test executable name, srcs, and deps
 # add_executable(example_lib_test tests/example_lib_test.cc)
