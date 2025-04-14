@@ -2,6 +2,7 @@
 
 #include "session.h"
 #include <boost/bind.hpp>
+#include <iostream> // for server debugging output
 
 session::session(boost::asio::io_service& io_service)
     : socket_(io_service)
@@ -25,11 +26,18 @@ void session::handle_read(const boost::system::error_code& error,
               size_t bytes_transferred)
 {
     if (!error)
-    {
-      boost::asio::async_write(socket_,
-          boost::asio::buffer(data_, bytes_transferred),
+    {      
+      request_data_.append(data_, bytes_transferred);
+      if (request_data_.find("\n\n") != std::string::npos) {
+        boost::asio::async_write(socket_,
+          boost::asio::buffer(request_data_, request_data_.size()),
           boost::bind(&session::handle_write, this,
             boost::asio::placeholders::error));
+        request_data_.clear();
+      }
+      else {
+        start();
+      }
     }
     else
     {
