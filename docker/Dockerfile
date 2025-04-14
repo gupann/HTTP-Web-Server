@@ -1,6 +1,6 @@
 ### Build/test container ###
 # Define builder stage
-FROM wasd-gamers:base as builder
+FROM wasd-gamers:base AS builder
 
 # Share work directory
 COPY . /usr/src/project
@@ -14,18 +14,18 @@ RUN ctest --output-on_failure
 
 ### Deploy container ###
 # Define deploy stage
-FROM ubuntu:noble as deploy
+FROM ubuntu:noble AS deploy
 
-# TODO(!): Copy server output binary to "."
-# COPY --from=builder /usr/src/project/build/bin/example_server .
+# Copy server output binary to "."
+COPY --from=builder /usr/src/project/build/bin/webserver .
+COPY --from=builder /usr/src/project/my_config .
 
-# TODO(!): Expose some port(s)
-# EXPOSE 80
+# Expose port 80 for GCP
+EXPOSE 80
 
 # Use ENTRYPOINT to specify the binary name
-# TODO(!): Update with real server name
-# ENTRYPOINT ["./example_server"]
+ENTRYPOINT ["./webserver"]
 
 # Use CMD to specify arguments to ENTRYPOINT
-# TODO(!): Update with real server args
-# CMD [""]
+# TODO: Update with new config file for GCP
+CMD ["my_config"]
