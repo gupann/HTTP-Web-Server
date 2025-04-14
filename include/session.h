@@ -4,6 +4,9 @@
 #define SESSION_H
 
 #include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
 
 using boost::asio::ip::tcp;
 
@@ -18,13 +21,13 @@ public:
 
 private:
   void handle_read(const boost::system::error_code& error, size_t bytes_transferred);
-  void handle_write(const boost::system::error_code& error);
+  void handle_write(const boost::system::error_code& error, size_t bytes_transferred);
 
   tcp::socket socket_;
-  enum { max_length = 1024 };
-  char data_[max_length];
 
-  std::string request_data_;
+  boost::beast::flat_buffer buffer_;
+  boost::beast::http::request<boost::beast::http::string_body> req_;
+  boost::beast::http::response<boost::beast::http::string_body> res_;
 };
 
 #endif

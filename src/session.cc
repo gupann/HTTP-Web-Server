@@ -16,46 +16,58 @@ tcp::socket& session::socket()
 
 void session::start()
 {
-    socket_.async_read_some(boost::asio::buffer(data_, max_length),
-        boost::bind(&session::handle_read, this,
-          boost::asio::placeholders::error,
-          boost::asio::placeholders::bytes_transferred));
+  boost::beast::http::async_read(socket_, buffer_, req_,
+    boost::bind(&session::handle_read, this,
+      boost::asio::placeholders::error,
+      boost::asio::placeholders::bytes_transferred));
 }
 
 void session::handle_read(const boost::system::error_code& error, 
               size_t bytes_transferred)
 {
     if (!error)
-    {      
-      request_data_.append(data_, bytes_transferred);
-      if (request_data_.find("\n\n") != std::string::npos) {
-        boost::asio::async_write(socket_,
-          boost::asio::buffer(request_data_, request_data_.size()),
-          boost::bind(&session::handle_write, this,
-            boost::asio::placeholders::error));
-        request_data_.clear();
-      }
-      else {
-        start();
-      }
+    {
+      std::cout << "Valid HTTP Request received. (" << bytes_transferred << " bytes):\n";
+      std::cout << req_ << std::endl;
+
+      std::ostringstream oss;
+      oss << req_;
+      std::string echo = oss.str(); // GET does not have body. Creating the echo string
+
+      res_.version(req_.version());
+      res_.result(boost::beast::http::status::ok);
+      res_.set(boost::beast::http::field::content_type, "text/plain");
+      res_.body() = echo;
+      // res_.prepare_payload(); // for auto encoding and byte size etc.
+
+      boost::beast::http::async_write(socket_, res_,
+        boost::bind(&session::handle_write, this,
+          boost::asio::placeholders::error,
+          boost::asio::placeholders::bytes_transferred));
     }
     else
     {
+      std::cerr << "Error in handle_read: " << error.message() << std::endl;
       delete this;
     }
 }
 
-void session::handle_write(const boost::system::error_code& error)
+void session::handle_write(const boost::system::error_code& error, size_t bytes_transferred)
 {
     if (!error)
     {
-      socket_.async_read_some(boost::asio::buffer(data_, max_length),
-          boost::bind(&session::handle_read, this,
-            boost::asio::placeholders::error,
-            boost::asio::placeholders::bytes_transferred));
+      std::cout << "Response sent (" << bytes_transferred << " bytes)\n\n\n";
+      if (req_.keep_alive()) {
+        start();
+      }
+      else {
+        std::cout << "Close connection requested by client" << std::endl;
+        delete this;
+      }
     }
     else
     {
+      std::cerr << "Error in handle_write: " << error.message() << std::endl;
       delete this;
     }
 }
