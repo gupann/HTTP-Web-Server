@@ -240,7 +240,7 @@ bool NginxConfigParser::Parse(std::istream* config_file, NginxConfig* config) {
 
       config_stack.pop();
     } else if (token_type == TOKEN_TYPE_EOF) {
-      if (last_token_type != TOKEN_TYPE_START && // to allow valid empty inputs
+      if (!token.empty() || last_token_type != TOKEN_TYPE_START && // to allow valid empty inputs
           last_token_type != TOKEN_TYPE_STATEMENT_END &&
           last_token_type != TOKEN_TYPE_END_BLOCK) {
         // Error.
