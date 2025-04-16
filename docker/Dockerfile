@@ -27,5 +27,4 @@ EXPOSE 80
 ENTRYPOINT ["./webserver"]
 
 # Use CMD to specify arguments to ENTRYPOINT
-# TODO: Update with new config file for GCP
 CMD ["my_config"]
