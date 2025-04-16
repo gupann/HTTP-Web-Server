@@ -37,26 +37,20 @@ include_directories(include)
 # Compile config_parser into a library
 add_library(config_parser src/config_parser.cc)
 
-# Build echo server executable + link with the Boost system library and parser library
-add_executable(webserver
-    src/webserver_main.cc
-    src/server.cc
-    src/session.cc
-)
-target_link_libraries(webserver
-    Boost::system
-    config_parser
-)
+# Compile core webserver logic (server, session) into a library
+add_library(webserver_lib src/server.cc src/session.cc)
+target_link_libraries(webserver_lib PUBLIC Boost::system) # Ensure consumers will also link Boost
+
+# Build the main webserver executable
+add_executable(webserver src/webserver_main.cc)
+target_link_libraries(webserver webserver_lib config_parser)
 
 # Define config parser unit test executable, link its libraries, and discover its tests
 add_executable(config_parser_test tests/config_parser_test.cc)
 target_link_libraries(config_parser_test config_parser gtest_main)
 gtest_discover_tests(config_parser_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
-# TODO: Define webserver unit test executable, link its libraries, and discover its tests
-# add_executable(webserver_test tests/webserver_test.cc)
-# target_link_libraries(webserver_test webserver gtest_main)
-# gtest_discover_tests(webserver_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-
-include(cmake/CodeCoverageReportConfig.cmake)
-# generate_coverage_report(TARGETS example_server example_lib TESTS example_lib_test)
+# Define webserver unit test executable, link its libraries, and discover its tests
+add_executable(webserver_test tests/webserver_test.cc)
+target_link_libraries(webserver_test webserver_lib gtest_main)
+gtest_discover_tests(webserver_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)

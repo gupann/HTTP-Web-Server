@@ -19,6 +19,12 @@ public:
 
   void start();
 
+  boost::beast::http::response<boost::beast::http::string_body> get_response();
+  boost::beast::http::request<boost::beast::http::string_body> get_request();
+
+  void set_request(boost::beast::http::request<boost::beast::http::string_body> req);
+  void call_handle_read(const boost::system::error_code& error, size_t bytes_transferred);
+
 private:
   void handle_read(const boost::system::error_code& error, size_t bytes_transferred);
   void handle_write(const boost::system::error_code& error, size_t bytes_transferred);

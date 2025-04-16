@@ -22,6 +22,22 @@ void session::start()
       boost::asio::placeholders::bytes_transferred));
 }
 
+void session::call_handle_read(const boost::system::error_code& error, size_t bytes_transferred) {
+  handle_read(error, bytes_transferred);
+}
+
+boost::beast::http::response<boost::beast::http::string_body> session::get_response() {
+  return res_;
+}
+
+boost::beast::http::request<boost::beast::http::string_body> session::get_request() {
+  return req_;
+}
+
+void session::set_request(boost::beast::http::request<boost::beast::http::string_body> req) {
+  req_ = req;
+}
+
 void session::handle_read(const boost::system::error_code& error, 
               size_t bytes_transferred)
 {
