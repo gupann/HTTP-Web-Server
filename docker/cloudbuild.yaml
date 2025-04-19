@@ -5,7 +5,9 @@ steps:
   - '-c'
   - |
     docker pull gcr.io/$PROJECT_ID/wasd-gamers:base || exit 0
-- name: 'gcr.io/cloud-builders/docker'
+
+- id: base
+  name: 'gcr.io/cloud-builders/docker'
   args: [
     'build',
     '-f', 'docker/base.Dockerfile',
@@ -14,13 +16,28 @@ steps:
     '--cache-from', 'gcr.io/$PROJECT_ID/wasd-gamers:base',
     '.'
   ]
-- name: 'gcr.io/cloud-builders/docker'
+
+- id: base_cache
+  name: 'gcr.io/cloud-builders/docker'
   args: ['push', 'gcr.io/$PROJECT_ID/wasd-gamers:base']
-- name: 'gcr.io/cloud-builders/docker'
+
+- id: test
+  name: 'gcr.io/cloud-builders/docker'
   args: [
     'build',
     '-f', 'docker/Dockerfile',
     '-t', 'gcr.io/$PROJECT_ID/wasd-gamers:latest',
     '.'
   ]
-images: ['gcr.io/$PROJECT_ID/wasd-gamers:base', 'gcr.io/$PROJECT_ID/wasd-gamers:latest']
+
+- id: coverage
+  name: 'gcr.io/cloud-builders/docker'
+  waitFor: ['test']
+  args: [
+    'build',
+    '-f', 'docker/coverage.Dockerfile',
+    '-t', 'gcr.io/$PROJECT_ID/wasd-gamers:coverage',
+    '.'
+  ]
+
+images: ['gcr.io/$PROJECT_ID/wasd-gamers:base', 'gcr.io/$PROJECT_ID/wasd-gamers:latest', 'gcr.io/$PROJECT_ID/wasd-gamers:coverage']
