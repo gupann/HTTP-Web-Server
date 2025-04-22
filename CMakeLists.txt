@@ -55,7 +55,12 @@ add_executable(webserver_test tests/webserver_test.cc)
 target_link_libraries(webserver_test webserver_lib gtest_main)
 gtest_discover_tests(webserver_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
+# Define server unit test executable, link its libraries, and discover its tests
+add_executable(server_test tests/server_test.cc)
+target_link_libraries(server_test webserver_lib gmock gtest_main)
+gtest_discover_tests(server_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
 include(cmake/CodeCoverageReportConfig.cmake)
-generate_coverage_report(TARGETS webserver_lib config_parser TESTS webserver_test config_parser_test)
+generate_coverage_report(TARGETS webserver_lib config_parser TESTS webserver_test config_parser_test server_test)
 
 add_test(NAME integration_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} COMMAND bash tests/integration_test.sh)

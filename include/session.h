@@ -1,5 +1,3 @@
-// Refactored server_main.cc code for the session class (manages reading/writing to a client socket)
-
 #ifndef SESSION_H
 #define SESSION_H
 
@@ -7,20 +5,18 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-
 using boost::asio::ip::tcp;
 
-class session
-{
+class session {
 public:
   session(boost::asio::io_service& io_service);
+  virtual ~session(); // make dtor virtual
 
   tcp::socket& socket();
 
-  void start();
+  virtual void start();
 
   boost::beast::http::response<boost::beast::http::string_body> get_response();
-  boost::beast::http::request<boost::beast::http::string_body> get_request();
 
   void set_request(boost::beast::http::request<boost::beast::http::string_body> req);
   void call_handle_read(const boost::system::error_code& error, size_t bytes_transferred);

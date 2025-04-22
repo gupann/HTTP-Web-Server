@@ -1,5 +1,3 @@
-// Refactored server_main.cc code for the server class (manages listening on a port and accepting new sessions)
-
 #ifndef SERVER_H
 #define SERVER_H
 
@@ -12,12 +10,12 @@ class server
 {
 public:
   server(boost::asio::io_service& io_service, short port);
+  
+  void handle_accept(session* new_session,
+    const boost::system::error_code& error);
 
 private:
   void start_accept();
-
-  void handle_accept(session* new_session,
-                     const boost::system::error_code& error);
 
   boost::asio::io_service& io_service_;
   tcp::acceptor acceptor_;
