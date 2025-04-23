@@ -68,6 +68,10 @@ function(generate_coverage_report)
             -r "${CMAKE_SOURCE_DIR}"
             --object-directory "${CMAKE_BINARY_DIR}"
             -o "${COVERAGE_REPORT_FILE}"
+
+            # Exclude untestable branches
+            --exclude-throw-branches
+
             DEPENDS ${COVERAGE_DATA_STAMP_FILE}
             COMMENT "Generating coverage report"
             VERBATIM)
