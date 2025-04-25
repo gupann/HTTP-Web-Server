@@ -51,7 +51,7 @@ void session::handle_read(const boost::system::error_code& error,
       res_.result(boost::beast::http::status::ok);
       res_.set(boost::beast::http::field::content_type, "text/plain");
       res_.body() = echo;
-      // res_.prepare_payload(); // for auto encoding and byte size etc.
+      res_.prepare_payload(); // for auto encoding and byte size etc.
 
       boost::beast::http::async_write(socket_, res_,
         boost::bind(&session::handle_write, this,
