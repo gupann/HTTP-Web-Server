@@ -36,6 +36,7 @@ include_directories(include)
 
 # Compile config_parser into a library
 add_library(config_parser src/config_parser.cc)
+target_link_libraries(config_parser PUBLIC Boost::regex Boost::log_setup Boost::log)
 
 # Compile core webserver logic (server, session) into a library
 add_library(webserver_lib src/server.cc src/session.cc src/logger.cc)

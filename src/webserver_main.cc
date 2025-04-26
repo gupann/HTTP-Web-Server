@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <boost/asio.hpp>
+#include <boost/asio/signal_set.hpp>
 #include "server.h"
 #include "config_parser.h"
 #include "logger.h"
@@ -10,7 +11,7 @@ int main(int argc, char* argv[]) {
     BOOST_LOG_TRIVIAL(info) << "Server starting";
 
     if (argc != 2) {
-        std::cerr << "Usage: webserver <config_file>\n";
+        BOOST_LOG_TRIVIAL(error) << "Usage: webserver <config_file>";
         return 1;
     }
 
@@ -23,14 +24,31 @@ int main(int argc, char* argv[]) {
     }
 
     // get the port from config
-    int port = GetPort(config);
+    int port = 0;
+    try {
+      port = GetPort(config);
+    } catch (const std::exception& e) {
+      BOOST_LOG_TRIVIAL(error) << "Invalid port value in config: " << e.what();
+      return 1;
+    }
+    if (port <= 0 || port > 65535) {
+      BOOST_LOG_TRIVIAL(error) << "Port out of range (1–65535): " << port;
+      return 1;
+    }
     BOOST_LOG_TRIVIAL(info) << "Parsed config OK, using port " << port;
 
-    // run server
+    // set up ASIO & signal handler
     boost::asio::io_service io_service;
-    server s(io_service, port);
+    boost::asio::signal_set shutdown_signals(io_service, SIGINT, SIGTERM);
+    shutdown_signals.async_wait(
+      [&](const boost::system::error_code&, int) {
+        BOOST_LOG_TRIVIAL(info) << "Server shutting down";
+        io_service.stop();
+      });
+
+    // start server
+    server s(io_service, static_cast<short>(port));
     io_service.run();
-    BOOST_LOG_TRIVIAL(info) << "Server shutting down";
 
     return 0;
 }

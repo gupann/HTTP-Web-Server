@@ -5,6 +5,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <chrono>
 using boost::asio::ip::tcp;
 
 class session {
@@ -30,6 +31,8 @@ private:
   boost::beast::flat_buffer buffer_;
   boost::beast::http::request<boost::beast::http::string_body> req_;
   boost::beast::http::response<boost::beast::http::string_body> res_;
+
+  std::chrono::steady_clock::time_point start_time_;
 };
 
 #endif

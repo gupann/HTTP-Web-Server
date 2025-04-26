@@ -1,6 +1,9 @@
 #include "session.h"
 #include <boost/bind.hpp>
+#include <boost/log/trivial.hpp>
 #include <iostream> // for server debugging output
+#include <sstream>
+using Clock = std::chrono::steady_clock; // alias
 
 session::session(boost::asio::io_service& io_service)
     : socket_(io_service)
@@ -17,6 +20,8 @@ tcp::socket& session::socket()
 
 void session::start()
 {
+  start_time_ = Clock::now();
+
   boost::beast::http::async_read(socket_, buffer_, req_,
     boost::bind(&session::handle_read, this,
       boost::asio::placeholders::error,
@@ -35,52 +40,74 @@ void session::set_request(boost::beast::http::request<boost::beast::http::string
   req_ = req;
 }
 
-void session::handle_read(const boost::system::error_code& error, 
-              size_t bytes_transferred)
-{
-    if (!error)
-    {
-      std::cout << "Valid HTTP Request received. (" << bytes_transferred << " bytes):\n";
-      std::cout << req_ << std::endl;
+void session::handle_read(const boost::system::error_code& error,
+                          std::size_t bytes_transferred) {
 
-      std::ostringstream oss;
-      oss << req_;
-      std::string echo = oss.str(); // GET does not have body. Creating the echo string
+  if (error == boost::beast::http::error::end_of_stream) {
+    std::string ip = "unknown";
+    try { ip = socket_.remote_endpoint().address().to_string(); }
+    catch(...) {}
+    BOOST_LOG_TRIVIAL(info)
+      << ip << " Connection closed by client (EOF)";
+    delete this;
+    return;
+  }
 
-      res_.version(req_.version());
-      res_.result(boost::beast::http::status::ok);
-      res_.set(boost::beast::http::field::content_type, "text/plain");
-      res_.body() = echo;
-      res_.prepare_payload(); // for auto encoding and byte size etc.
+  if (error) {
+    std::string ip = "unknown";
+    try { ip = socket_.remote_endpoint().address().to_string(); }
+    catch(...) {}
+    BOOST_LOG_TRIVIAL(error)
+      << ip << " handle_read error: " << error.message();
+    delete this;
+    return;
+  }
 
-      boost::beast::http::async_write(socket_, res_,
-        boost::bind(&session::handle_write, this,
-          boost::asio::placeholders::error,
-          boost::asio::placeholders::bytes_transferred));
-    }
-    else
-    {
-      std::cerr << "Error in handle_read: " << error.message() << std::endl;
-      delete this;
-    }
+  // build echo response
+  std::ostringstream oss;
+  oss << req_;
+  res_.version(req_.version());
+  res_.result(boost::beast::http::status::ok);
+  res_.set(boost::beast::http::field::content_type, "text/plain");
+  res_.body() = oss.str();
+  res_.prepare_payload(); // for auto encoding and byte size etc.
+
+  boost::beast::http::async_write(
+    socket_, res_,
+    boost::bind(&session::handle_write, this,
+                boost::asio::placeholders::error,
+                boost::asio::placeholders::bytes_transferred));
 }
 
-void session::handle_write(const boost::system::error_code& error, size_t bytes_transferred)
-{
-    if (!error)
-    {
-      std::cout << "Response sent (" << bytes_transferred << " bytes)\n\n\n";
-      if (req_.keep_alive()) {
-        start();
-      }
-      else {
-        std::cout << "Close connection requested by client" << std::endl;
-        delete this;
-      }
-    }
-    else
-    {
-      std::cerr << "Error in handle_write: " << error.message() << std::endl;
-      delete this;
-    }
+void session::handle_write(const boost::system::error_code& error,
+                           std::size_t bytes_transferred) {
+  // compute latency
+  auto latency_ms = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start_time_).count();
+
+  if (error) {
+    BOOST_LOG_TRIVIAL(error) << "write error: " << error.message();
+    delete this;
+    return;
+  }
+
+  // structured per request log
+  try {
+    auto ip = socket_.remote_endpoint().address().to_string();
+    BOOST_LOG_TRIVIAL(info)
+      << ip << " "
+      << req_.method_string() << " "
+      << req_.target() << " => "
+      << res_.result_int() << " "
+      << latency_ms << "ms "
+      << bytes_transferred << "B";
+  } catch (...) {
+    BOOST_LOG_TRIVIAL(warning) << "Could not log remote endpoint";
+  }
+
+  if (req_.keep_alive()) {
+    start();
+  } else {
+    BOOST_LOG_TRIVIAL(info) << "Connection closed by client";
+    delete this;
+  }
 }
