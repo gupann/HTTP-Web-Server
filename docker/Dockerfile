@@ -28,3 +28,6 @@ ENTRYPOINT ["./webserver"]
 
 # Use CMD to specify arguments to ENTRYPOINT
 CMD ["my_config"]
+
+# Create a volume to write logs to
+VOLUME ["/logs"]

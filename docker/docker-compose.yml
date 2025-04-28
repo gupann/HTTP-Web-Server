@@ -1,0 +1,12 @@
+services:
+  webserver:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    container_name: webserver-container
+    volumes:
+      - webserver-logs:/logs
+
+volumes:
+  webserver-logs:
+    driver: local
