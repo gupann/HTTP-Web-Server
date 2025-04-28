@@ -1,9 +1,12 @@
 #include "session.h"
+#include "echo_handler.h"
 #include <boost/bind.hpp>
 #include <boost/log/trivial.hpp>
 #include <iostream> // for server debugging output
 #include <sstream>
 using Clock = std::chrono::steady_clock; // alias
+
+namespace http = boost::beast::http;
 
 session::session(boost::asio::io_service& io_service)
     : socket_(io_service)
@@ -22,7 +25,7 @@ void session::start()
 {
   start_time_ = Clock::now();
 
-  boost::beast::http::async_read(socket_, buffer_, req_,
+  http::async_read(socket_, buffer_, req_,
     boost::bind(&session::handle_read, this,
       boost::asio::placeholders::error,
       boost::asio::placeholders::bytes_transferred));
@@ -32,18 +35,18 @@ void session::call_handle_read(const boost::system::error_code& error, size_t by
   handle_read(error, bytes_transferred);
 }
 
-boost::beast::http::response<boost::beast::http::string_body> session::get_response() {
+http::response<http::string_body> session::get_response() {
   return res_;
 }
 
-void session::set_request(boost::beast::http::request<boost::beast::http::string_body> req) {
+void session::set_request(http::request<http::string_body> req) {
   req_ = req;
 }
 
 void session::handle_read(const boost::system::error_code& error,
                           std::size_t bytes_transferred) {
 
-  if (error == boost::beast::http::error::end_of_stream) {
+  if (error == http::error::end_of_stream) {
     std::string ip = "unknown";
     try { ip = socket_.remote_endpoint().address().to_string(); }
     catch(...) {}
@@ -62,17 +65,29 @@ void session::handle_read(const boost::system::error_code& error,
     delete this;
     return;
   }
+  
+  // debug output
+  // std::ostringstream oss;
+  // oss << req_;
+  // std::cout << "Valid HTTP Request received. (" << bytes_transferred << " bytes):\n";
+  // std::cout << "Path: " << path << std::endl;
 
-  // build echo response
-  std::ostringstream oss;
-  oss << req_;
-  res_.version(req_.version());
-  res_.result(boost::beast::http::status::ok);
-  res_.set(boost::beast::http::field::content_type, "text/plain");
-  res_.body() = oss.str();
-  res_.prepare_payload(); // for auto encoding and byte size etc.
+  // Determine appropriate request handler based on path (echo-ing all for now)
+  std::string path = req_.target();
+  echo_handler handler(path, "placeholder");
+  
+  if (!path.empty()) {
+  // if (path == "/") {
+    handler.handle_request(req_, res_);
+  }
+  else {
+    res_.version(req_.version());
+    res_.result(http::status::not_found);
+    res_.body() = "404 Not Found. Path: " + path;
+    res_.prepare_payload();
+  }
 
-  boost::beast::http::async_write(
+  http::async_write(
     socket_, res_,
     boost::bind(&session::handle_write, this,
                 boost::asio::placeholders::error,
