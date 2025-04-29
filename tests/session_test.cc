@@ -71,7 +71,7 @@ TEST_F(SessionTest, HandleGETWithPath) {
   // 1. Prepare a GET request with a path
   http::request<http::string_body> req;
   req.method(http::verb::get);
-  req.target("/api/users?id=123");
+  req.target("/echo");
   req.version(11);
   req.set(http::field::host, "example.com");
   req.prepare_payload();
@@ -94,7 +94,7 @@ TEST_F(SessionTest, HandlePOSTRequest) {
   // 1. Prepare a POST request
   http::request<http::string_body> req;
   req.method(http::verb::post);
-  req.target("/submit_form");
+  req.target("/echo");
   req.version(11);
   req.set(http::field::host, "myserver");
   req.set(http::field::content_type, "application/x-www-form-urlencoded");
@@ -119,7 +119,7 @@ TEST_F(SessionTest, HandleRequestWithHeaders) {
   // 1. Prepare a request with multiple headers
   http::request<http::string_body> req;
   req.method(http::verb::get);
-  req.target("/status");
+  req.target("/echo");
   req.version(11);
   req.set(http::field::host, "monitor.com");
   req.set(http::field::user_agent, "TestClient/1.0");
@@ -144,7 +144,7 @@ TEST_F(SessionTest, HandleRequestConnectionClose) {
   // 1. Prepare a request asking to close the connection
   http::request<http::string_body> req;
   req.method(http::verb::get);
-  req.target("/logout");
+  req.target("/echo");
   req.version(11);
   req.set(http::field::host, "secure.com");
   req.set(http::field::connection, "close"); // Request connection close

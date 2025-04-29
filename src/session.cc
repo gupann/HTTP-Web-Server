@@ -1,5 +1,6 @@
 #include "session.h"
 #include "echo_handler.h"
+#include "static_handler.h"
 #include <boost/bind.hpp>
 #include <boost/log/trivial.hpp>
 #include <iostream> // for server debugging output
@@ -65,21 +66,22 @@ void session::handle_read(const boost::system::error_code& error,
     delete this;
     return;
   }
-  
-  // debug output
-  // std::ostringstream oss;
-  // oss << req_;
-  // std::cout << "Valid HTTP Request received. (" << bytes_transferred << " bytes):\n";
-  // std::cout << "Path: " << path << std::endl;
 
-  // Determine appropriate request handler based on path (echo-ing all for now)
   std::string path = req_.target();
-  echo_handler handler(path, "placeholder");
-  
-  if (!path.empty()) {
-  // if (path == "/") {
+  // TODO: implement more advanced routing/parsing logic
+  std::string prefix = path.substr(0, path.find('/', 1));
+
+  // TODO: Move routing logic to server.h
+  if (prefix == "/echo" || prefix == "/") {
+    std::cout << "Echo handler called" << std::endl;
+    echo_handler handler("/echo", "placeholder (not used)");
     handler.handle_request(req_, res_);
   }
+  else if (prefix == "/static") {
+    std::cout << "Static handler called" << std::endl;
+    static_handler handler("/static", "/static/static1");
+    handler.handle_request(req_, res_);
+  } 
   else {
     res_.version(req_.version());
     res_.result(http::status::not_found);

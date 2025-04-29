@@ -20,6 +20,9 @@ FROM ubuntu:noble AS deploy
 COPY --from=builder /usr/src/project/build/bin/webserver .
 COPY --from=builder /usr/src/project/my_config .
 
+# Copy static files
+COPY --from=builder /usr/src/project/static /static
+
 # Expose port 80 for GCP
 EXPOSE 80
 
