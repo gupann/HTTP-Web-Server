@@ -12,6 +12,8 @@ PORT=${PORT:-8080} # use 8080 if no port set in env
 CFG_FILE="$(mktemp)" # temp file for server config, will be deleted
 SERVER_BIN="${BUILD_DIR}/bin/webserver"
 
+# where to put our static files
+STATIC_ROOT="$(mktemp -d)"
 
 # lifecycle helpers
 
@@ -21,16 +23,23 @@ SERVER_PID=""
 # build the code, write a minimal config, start the server, and wait for it to begin listening
 setup_server() {
     echo "[SETUP] Building and starting server..."
-    # echo "[SETUP] CWD = $(pwd)"
-    
-    # rm -f "CMakeCache.txt"
-    # mkdir -p $BUILD_DIR && cd build && cmake .. && make && cd .. # follow same normal build steps from assignment 1
+    cmake -B "$BUILD_DIR" -S . >/dev/null
+    cmake --build "$BUILD_DIR" >/dev/null
 
-    # the below two lines are more reliable than above
-    cmake -B "$BUILD_DIR" -S . >/dev/null # create files for build
-    cmake --build "$BUILD_DIR" >/dev/null # execute the build
+    # prepare a sample static directory
+    mkdir -p "$STATIC_ROOT/static1"
+    echo "<h1>Hello static1</h1>" > "$STATIC_ROOT/static1/index.html"
 
-    echo "port $PORT;" > "$CFG_FILE" # write the port to our temp config file
+    # write config with port + locations
+    cat > "$CFG_FILE" <<EOF
+port $PORT;
+
+location /static1 StaticHandler {
+    root $STATIC_ROOT/static1;
+}
+
+location /echo EchoHandler;
+EOF
 
     "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 & # run server in background
     SERVER_PID=$! # set SERVER_PID to PID of last background job (server in bg)
@@ -48,6 +57,7 @@ teardown_server() {
     echo "[TEARDOWN] Stopping server"
     [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
     rm -f "$CFG_FILE"
+    rm -rf "$STATIC_ROOT"
 }
 trap teardown_server EXIT INT TERM
 
@@ -68,12 +78,53 @@ test_invalid_request() {
     ! grep -qE '^HTTP/1\.[01] ' <<<"$reply" # reply should NOT match the valid response form
 }
 
+# static-file serving returns the file contents
+test_static_file() {
+    local body
+    body=$(curl -s "http://localhost:$PORT/static1/index.html")
+    grep -q "<h1>Hello static1</h1>" <<<"$body"
+}
+
+# requesting a missing static file returns 404
+test_static_404() {
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT/static1/notfound.txt")
+    [ "$code" -eq 404 ]
+}
+
+# echo handler on /echo prefix
+test_echo_handler() {
+    local body
+    body=$(curl -s "http://localhost:$PORT/echo/foo/bar" -H "X-Test: yes")
+    grep -qE "^GET /echo/foo/bar HTTP/1\.[01]" <<<"$body"
+    grep -q "X-Test: yes" <<<"$body"
+}
+
+# fallback echo (any unmapped path)
+test_fallback_echo() {
+    local body
+    body=$(curl -s "http://localhost:$PORT/otherpath" -H "X-Fallback: ok")
+    grep -qE "^GET /otherpath HTTP/1\.[01]" <<<"$body"
+    grep -q "X-Fallback: ok" <<<"$body"
+}
+
+# static file returns correct Content-Type
+test_static_content_type() {
+    local ct
+    ct=$(curl -sI "http://localhost:$PORT/static1/index.html" | grep -i '^Content-Type:' | awk '{print $2}' | tr -d '\r')
+    [ "$ct" = "text/html" ]
+}
 
 # register tests
 
 TESTS=(
   test_valid_request
   test_invalid_request
+  test_static_file
+  test_static_404
+  test_echo_handler
+  test_fallback_echo
+  test_static_content_type
 )
 
 # main
@@ -82,7 +133,7 @@ setup_server
 
 failures=0
 for t in "${TESTS[@]}"; do
-  printf "[RUN] %-20s ... " "$t"
+  printf "[RUN] %-25s ... " "$t"
   if "$t"; then
     echo "PASS"
   else

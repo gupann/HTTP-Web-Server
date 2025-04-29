@@ -1,1 +1,7 @@
 port 80;
+
+location /static1 StaticHandler {
+    root /tmp/site1;
+}
+
+location /echo EchoHandler;

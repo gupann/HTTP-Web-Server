@@ -2,6 +2,7 @@
 #define SESSION_H
 
 #include "request_handler.h"
+#include "handler_registry.h" 
 #include <unordered_map>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -10,9 +11,10 @@
 namespace http = boost::beast::http;
 using boost::asio::ip::tcp;
 
-class session {
+class session : public std::enable_shared_from_this<session> {
 public:
-  session(boost::asio::io_service& io_service);
+  session(boost::asio::io_service& io_service, std::shared_ptr<HandlerRegistry> registry);
+
   virtual ~session();
 
   tcp::socket& socket();
@@ -37,6 +39,8 @@ private:
   std::chrono::steady_clock::time_point start_time_;
 
   std::unordered_map<std::string, std::shared_ptr<request_handler>> routes;
+
+  std::shared_ptr<HandlerRegistry> registry_;
 };
 
 #endif

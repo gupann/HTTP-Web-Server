@@ -9,10 +9,11 @@ using Clock = std::chrono::steady_clock; // alias
 
 namespace http = boost::beast::http;
 
-session::session(boost::asio::io_service& io_service)
-    : socket_(io_service)
-{
-}
+session::session(boost::asio::io_service& io_service,
+  std::shared_ptr<HandlerRegistry> registry)
+: socket_(io_service),
+registry_(std::move(registry))
+{}
 
 // Define virtual constructor
 session::~session() = default;
@@ -67,27 +68,13 @@ void session::handle_read(const boost::system::error_code& error,
     return;
   }
 
-  std::string path = req_.target();
-  // TODO: implement more advanced routing/parsing logic
-  std::string prefix = path.substr(0, path.find('/', 1));
+  request_handler* h = registry_->Match(std::string(req_.target()));
+  if (!h) {
+      static echo_handler default_echo("/", "");
+      h = &default_echo;
+  }
+  h->handle_request(req_, res_);
 
-  // TODO: Move routing logic to server.h
-  if (prefix == "/echo" || prefix == "/") {
-    std::cout << "Echo handler called" << std::endl;
-    echo_handler handler("/echo", "placeholder (not used)");
-    handler.handle_request(req_, res_);
-  }
-  else if (prefix == "/static") {
-    std::cout << "Static handler called" << std::endl;
-    static_handler handler("/static", "/static/static1");
-    handler.handle_request(req_, res_);
-  } 
-  else {
-    res_.version(req_.version());
-    res_.result(http::status::not_found);
-    res_.body() = "404 Not Found. Path: " + path;
-    res_.prepare_payload();
-  }
 
   http::async_write(
     socket_, res_,

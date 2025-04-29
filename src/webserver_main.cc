@@ -37,6 +37,12 @@ int main(int argc, char* argv[]) {
     }
     BOOST_LOG_TRIVIAL(info) << "Parsed config OK, using port " << port;
 
+    auto registry = std::make_shared<HandlerRegistry>();
+    if (!registry->Init(config)) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to build handler registry";
+        return 1;
+    }
+
     // set up ASIO & signal handler
     boost::asio::io_service io_service;
     boost::asio::signal_set shutdown_signals(io_service, SIGINT, SIGTERM);
@@ -47,7 +53,7 @@ int main(int argc, char* argv[]) {
       });
 
     // start server
-    server s(io_service, static_cast<short>(port));
+    server s(io_service, static_cast<short>(port), registry);
     io_service.run();
 
     return 0;

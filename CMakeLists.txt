@@ -42,7 +42,7 @@ add_library(config_parser src/config_parser.cc)
 target_link_libraries(config_parser PUBLIC Boost::regex Boost::log_setup Boost::log)
 
 # Compile core webserver logic (server, session) into a library
-add_library(webserver_lib src/server.cc src/session.cc src/logger.cc)
+add_library(webserver_lib src/server.cc src/session.cc src/logger.cc src/handler_registry.cc)
 target_link_libraries(webserver_lib PUBLIC request_handler_lib Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
 
 # Build the main webserver executable

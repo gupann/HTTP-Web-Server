@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "session.h"
+#include "handler_registry.h"
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 #include <string>
@@ -10,7 +11,11 @@ namespace http = boost::beast::http;
 class SessionTest : public ::testing::Test {
 protected:
     boost::asio::io_service io_service_;
-    session* test_session_ = new session{io_service_};
+
+    std::shared_ptr<HandlerRegistry> registry_ =
+    std::make_shared<HandlerRegistry>();
+
+    session* test_session_ = new session{io_service_, registry_};
 
     void SimulateHandleRead(http::request<http::string_body> request,
                             const boost::system::error_code& ec = boost::system::error_code{},
@@ -168,7 +173,7 @@ class TestSessionExposed : public session {
 public:
   using session::start;
   using session::handle_write;
-  TestSessionExposed(boost::asio::io_service& io): session(io) {}
+  TestSessionExposed(boost::asio::io_service& io, std::shared_ptr<HandlerRegistry> reg) : session(io, std::move(reg)) {}
 };
 
 // Cover session::start()
@@ -180,7 +185,7 @@ TEST_F(SessionTest, StartDoesNotThrow) {
 static bool write_deleted_flag = false;
 
 TEST_F(SessionTest, HandleWrite_KeepAlive) {
-  auto* s = new TestSessionExposed(io_service_);
+  auto* s = new TestSessionExposed(io_service_, registry_);
   // HTTP/1.1 defaults to keep-alive
   boost::system::error_code ec; 
   EXPECT_NO_THROW(s->handle_write(ec, /*bytes_transferred=*/0));
@@ -191,11 +196,11 @@ TEST_F(SessionTest, HandleWrite_KeepAlive) {
 TEST_F(SessionTest, HandleWrite_ErrorDeletesSession) {
   write_deleted_flag = false;
   struct TempSessionExposed : TestSessionExposed {
-    TempSessionExposed(boost::asio::io_service& io)
-      : TestSessionExposed(io) {}
+    TempSessionExposed(boost::asio::io_service& io, std::shared_ptr<HandlerRegistry> reg)
+      : TestSessionExposed(io, std::move(reg)) {}
     ~TempSessionExposed() override { write_deleted_flag = true; }
-  };
-  auto* temp = new TempSessionExposed(io_service_);
+};
+  auto* temp = new TempSessionExposed(io_service_, registry_);
   boost::system::error_code ec = boost::asio::error::operation_aborted;
   temp->handle_write(ec, /*bytes_transferred=*/0);
   EXPECT_TRUE(write_deleted_flag);
@@ -204,14 +209,13 @@ TEST_F(SessionTest, HandleWrite_ErrorDeletesSession) {
 // Helper subclass to capture start() calls
 struct ExposedSessionWithStart : TestSessionExposed {
   bool start_called = false;
-  ExposedSessionWithStart(boost::asio::io_service& io)
-    : TestSessionExposed(io) {}
+  ExposedSessionWithStart(boost::asio::io_service& io, std::shared_ptr<HandlerRegistry> reg)
+    : TestSessionExposed(io, std::move(reg)) {}
   void start() override { start_called = true; }
 };
-
 // Test that handle_write restarts on keep‐alive (HTTP/1.1)
 TEST_F(SessionTest, HandleWrite_KeepAlive_CallsStart) {
-  auto* s = new ExposedSessionWithStart(io_service_);
+  auto* s = new ExposedSessionWithStart(io_service_, registry_);
   http::request<http::string_body> req;
   req.method(http::verb::get);
   req.target("/");
@@ -231,11 +235,11 @@ TEST_F(SessionTest, HandleWrite_NoKeepAlive_DeletesSession) {
   bool deleted = false;
   struct TempSessionClose : TestSessionExposed {
     bool* flag;
-    TempSessionClose(boost::asio::io_service& io, bool* f)
-      : TestSessionExposed(io), flag(f) {}
+    TempSessionClose(boost::asio::io_service& io, std::shared_ptr<HandlerRegistry> reg, bool* f)
+      : TestSessionExposed(io, std::move(reg)), flag(f) {}
     ~TempSessionClose() override { *flag = true; }
   };
-  auto* s = new TempSessionClose(io_service_, &deleted);
+  auto* s = new TempSessionClose(io_service_, registry_, &deleted);
 
   http::request<http::string_body> req;
   req.method(http::verb::get);
@@ -255,11 +259,11 @@ TEST_F(SessionTest, HandleWrite_Error_DeletesSession) {
   bool deleted = false;
   struct TempSessionError : TestSessionExposed {
     bool* flag;
-    TempSessionError(boost::asio::io_service& io, bool* f)
-      : TestSessionExposed(io), flag(f) {}
+    TempSessionError(boost::asio::io_service& io, std::shared_ptr<HandlerRegistry> reg, bool* f)
+      : TestSessionExposed(io, std::move(reg)), flag(f) {}
     ~TempSessionError() override { *flag = true; }
-  };
-  auto* s = new TempSessionError(io_service_, &deleted);
+};
+  auto* s = new TempSessionError(io_service_, registry_, &deleted);
 
   // any request is fine here
   s->set_request(http::request<http::string_body>{});
