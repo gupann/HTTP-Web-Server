@@ -1,11 +1,21 @@
 services:
+  base:
+    build:
+      context: ../
+      dockerfile: docker/base.Dockerfile
+    image: wasd-gamers:base
+
   webserver:
     build:
       context: ../
       dockerfile: docker/Dockerfile
-    container_name: webserver-container
+    container_name: echo-server
+    ports:
+      - "127.0.0.1:80:80"
     volumes:
       - webserver-logs:/logs
+    depends_on:
+      - base
 
 volumes:
   webserver-logs:
