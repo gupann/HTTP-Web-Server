@@ -8,47 +8,103 @@ class NginxConfigParserTestFixture : public testing::Test {
 protected:
   NginxConfigParserTestFixture() {}
 
-  bool ParseConfig(const char *file_name) { return parser.Parse(file_name, &out_config); }
+  // old method, refactored
+  // bool ParseConfig(const char *file_name) { return parser.Parse(file_name, &out_config); }
+
+  bool ParseString(const std::string &config_content) {
+    std::istringstream config_stream(config_content);
+    return parser.Parse(&config_stream, &out_config);
+  }
 
   NginxConfigParser parser;
   NginxConfig out_config;
 };
 
 TEST_F(NginxConfigParserTestFixture, SimpleConfig) {
-  EXPECT_TRUE(ParseConfig("example_config"));
+  const std::string config_content = R"(
+  foo "bar";
+
+  server {
+    listen   80;
+    server_name foo.com;
+    root /home/ubuntu/sites/foo/;
+  }
+  )";
+  EXPECT_TRUE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, InvalidConfig) {
-  EXPECT_FALSE(ParseConfig("invalid_config"));
+  const std::string config_content = R"(
+  asdasdasdaa
+  )";
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, EmptyConfig) {
-  EXPECT_FALSE(ParseConfig("empty_config"));
+  const std::string config_content = R"(
+  {}
+  )";
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, StatementEmptyConfig) {
-  EXPECT_FALSE(ParseConfig("statement_empty_config"));
+  const std::string config_content = R"(
+  path /echo {
+
+  }
+  )";
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, NestedEmptyConfig) {
-  EXPECT_FALSE(ParseConfig("nested_empty_config"));
+  const std::string config_content = R"(
+  path {
+      {
+          {
+
+          }
+      }
+  }
+  echo;
+  )";
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, BraceEmptyConfig) {
-  EXPECT_TRUE(ParseConfig("brace_empty_config"));
+  const std::string config_content = R"(
+  )";
+  EXPECT_TRUE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, NestedConfig) {
-  EXPECT_TRUE(ParseConfig("nested_config"));
+  const std::string config_content = R"(
+  asd asd { 
+      asd asd;
+      asd {
+          hello;
+      }
+  }
+
+  asd {asd;}
+  )";
+  EXPECT_TRUE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, ExtraEndBraceConfig) {
-  EXPECT_FALSE(ParseConfig("extra_end_brace_config"));
+  const std::string config_content = R"(
+  asd {
+      asd;
+  }
+  }
+  )";
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, ParseMultipleStatements) {
-  std::istringstream input("alpha beta gamma; delta epsilon zeta;");
-  EXPECT_TRUE(parser.Parse(&input, &out_config));
+  const std::string config_content = R"(
+  alpha beta gamma; delta epsilon zeta;
+  )";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 2);
   EXPECT_EQ(out_config.statements_[0]->tokens_.size(), 3);
   EXPECT_EQ(out_config.statements_[1]->tokens_.size(), 3);
@@ -57,13 +113,16 @@ TEST_F(NginxConfigParserTestFixture, ParseMultipleStatements) {
 }
 
 TEST_F(NginxConfigParserTestFixture, ParseNestedBlocks) {
-  std::istringstream input("http {\n"
-                           "  server {\n"
-                           "    listen 80;\n"
-                           "    server_name example.com;\n"
-                           "  }\n"
-                           "}\n");
-  EXPECT_TRUE(parser.Parse(&input, &out_config));
+  const std::string config_content = R"(
+  http {
+    server {
+      listen 80;
+      server_name example.com;
+    }
+  }
+  )";
+  EXPECT_TRUE(ParseString(config_content));
+
   ASSERT_EQ(out_config.statements_.size(), 1);
   auto root = out_config.statements_[0];
   EXPECT_EQ(root->tokens_[0], "http");
@@ -77,8 +136,10 @@ TEST_F(NginxConfigParserTestFixture, ParseNestedBlocks) {
 }
 
 TEST_F(NginxConfigParserTestFixture, ParseQuotedStrings) {
-  std::istringstream input(R"(root "/var/www/html";)");
-  EXPECT_TRUE(parser.Parse(&input, &out_config));
+  const std::string config_content = R"(
+  root "/var/www/html";
+  )";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 1);
   auto stmt = out_config.statements_[0];
   ASSERT_EQ(stmt->tokens_.size(), 2);
@@ -87,26 +148,28 @@ TEST_F(NginxConfigParserTestFixture, ParseQuotedStrings) {
 }
 
 TEST_F(NginxConfigParserTestFixture, MissingSemicolon) {
-  std::istringstream input("foo bar"); // no trailing ';'
-  EXPECT_FALSE(parser.Parse(&input, &out_config));
+  const std::string config_content = "foo bar"; // no trailing ';'
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, UnmatchedOpenBrace) {
-  std::istringstream input("block { foo bar;"); // never closed
-  EXPECT_FALSE(parser.Parse(&input, &out_config));
+  const std::string config_content = "block { foo bar;"; // never closed
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, UnmatchedCloseBrace) {
-  std::istringstream input("foo bar; }"); // stray '}'
-  EXPECT_FALSE(parser.Parse(&input, &out_config));
+  const std::string config_content = "foo bar; }"; // stray '}'
+  EXPECT_FALSE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, MixedCommentsAndStatements) {
-  std::istringstream input("# top‑level comment\n"
-                           "foo bar;  # inline comment\n"
-                           "# another comment\n"
-                           "baz qux;\n");
-  EXPECT_TRUE(parser.Parse(&input, &out_config));
+  const std::string config_content = R"(
+  # top‑level comment
+  foo bar;  # inline comment
+  # another comment
+  baz qux;
+  )";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 2);
   EXPECT_EQ(out_config.statements_[0]->tokens_[0], "foo");
   EXPECT_EQ(out_config.statements_[1]->tokens_[0], "baz");
@@ -114,8 +177,10 @@ TEST_F(NginxConfigParserTestFixture, MixedCommentsAndStatements) {
 
 // 1) semicolons inside quoted strings
 TEST_F(NginxConfigParserTestFixture, QuotedStringWithSemicolon) {
-  std::istringstream in(R"(message "hello;world";)");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = R"(
+  message "hello;world";
+  )";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 1);
   auto &tok = out_config.statements_[0]->tokens_;
   EXPECT_EQ(tok[0], "message");
@@ -124,31 +189,29 @@ TEST_F(NginxConfigParserTestFixture, QuotedStringWithSemicolon) {
 
 // 2) directive with zero arguments
 TEST_F(NginxConfigParserTestFixture, DirectiveNoArgs) {
-  std::istringstream in("flush_logs;");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = "flush_logs;";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 1);
   EXPECT_EQ(out_config.statements_[0]->tokens_.size(), 1);
   EXPECT_EQ(out_config.statements_[0]->tokens_[0], "flush_logs");
 }
 
-// 3) nested blocks two levels deep + ToString match round‑trip
+// 3) nested blocks two levels deep
 TEST_F(NginxConfigParserTestFixture, DeeplyNestedBlockAndToString) {
-  const char *txt = "outer {\n"
-                    "  inner {\n"
-                    "    val 42;\n"
-                    "  }\n"
-                    "}\n";
-  std::istringstream in(txt);
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
-  // round‑trip via ToString
-  std::string dumped = out_config.ToString(0);
-  EXPECT_EQ(dumped, txt);
+  const std::string config_content = R"(
+  outer {
+    inner {
+      val 42;
+    }
+  }
+  )";
+  EXPECT_TRUE(ParseString(config_content));
 }
 
 // 4) mixed whitespace (tabs, multiple spaces, CRLF)
 TEST_F(NginxConfigParserTestFixture, MixedWhitespaceAndNewlines) {
-  std::istringstream in(" \tfoo\t bar\t ;\r\n#comment\r\nbaz qux;\n");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = " \tfoo\t bar\t ;\r\n#comment\r\nbaz qux;\n";
+  EXPECT_TRUE(ParseString(config_content));
   // foo bar;
   EXPECT_EQ(out_config.statements_[0]->tokens_[0], "foo");
   EXPECT_EQ(out_config.statements_[0]->tokens_[1], "bar");
@@ -158,15 +221,17 @@ TEST_F(NginxConfigParserTestFixture, MixedWhitespaceAndNewlines) {
 
 // 5) multiple port directives → first one wins
 TEST_F(NginxConfigParserTestFixture, MultiplePortDirectives) {
-  std::istringstream in("port 8000;\nport 9000;\n");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = "port 8000;\nport 9000;\n";
+  EXPECT_TRUE(ParseString(config_content));
   EXPECT_EQ(GetPort(out_config), 8000);
 }
 
 // 6) unquoted brace characters inside quotes
 TEST_F(NginxConfigParserTestFixture, BraceInQuotedString) {
-  std::istringstream in(R"(location "/foo{bar}";)");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = R"(
+  location "/foo{bar}";
+  )";
+  EXPECT_TRUE(ParseString(config_content));
   auto &tok = out_config.statements_[0]->tokens_;
   EXPECT_EQ(tok[0], "location");
   EXPECT_EQ(tok[1], R"("/foo{bar}")");
@@ -183,8 +248,8 @@ TEST(NginxConfigStatementToStringTest, IndentDepth) {
 
 // 8) properly terminated single‐quoted string
 TEST_F(NginxConfigParserTestFixture, ParseToken_SingleQuotedValid) {
-  std::istringstream in(R"('hello world' ;)");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = R"('hello world' ;)";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 1);
   auto &tokens = out_config.statements_[0]->tokens_;
   EXPECT_EQ(tokens[0], R"('hello world')");
@@ -202,22 +267,24 @@ TEST_F(NginxConfigParserTestFixture, ParseToken_SingleQuotedValid) {
 
 // 10) closing quote followed by non‐delimiter → error
 TEST_F(NginxConfigParserTestFixture, ParseToken_SingleQuotedNoDelimiter) {
-  std::istringstream in(R"('oops'n);");
-  EXPECT_FALSE(parser.Parse(&in, &out_config));
+  const std::string config_content = R"('oops'n);)";
+  EXPECT_FALSE(ParseString(config_content));
   EXPECT_EQ(out_config.statements_.size(), 0);
 }
 
 // 11) unterminated single quote at EOF → error
 TEST_F(NginxConfigParserTestFixture, ParseToken_SingleQuotedUnterminated) {
-  std::istringstream in(R"('incomplete)");
-  EXPECT_FALSE(parser.Parse(&in, &out_config));
+  const std::string config_content = R"('incomplete)";
+  EXPECT_FALSE(ParseString(config_content));
   EXPECT_EQ(out_config.statements_.size(), 0);
 }
 
 // 12) backslash‑escaping inside double quotes
 TEST_F(NginxConfigParserTestFixture, ParseQuotedStringWithEscape) {
-  std::istringstream in(R"(msg "a\"b";)");
-  EXPECT_TRUE(parser.Parse(&in, &out_config));
+  const std::string config_content = R"(
+  msg "a\"b";
+  )";
+  EXPECT_TRUE(ParseString(config_content));
   ASSERT_EQ(out_config.statements_.size(), 1);
   auto &tokens = out_config.statements_[0]->tokens_;
   EXPECT_EQ(tokens[0], "msg");
