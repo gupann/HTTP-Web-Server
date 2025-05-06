@@ -2,25 +2,24 @@
 #define SERVER_H
 
 #include <boost/asio.hpp>
-#include "session.h"
 #include "handler_registry.h"
+#include "session.h"
 
 using boost::asio::ip::tcp;
 
-class server
-{
+class server {
 public:
-  server(boost::asio::io_service& io_service, short port, std::shared_ptr<HandlerRegistry> registry);
-  
-  void handle_accept(session* new_session,
-    const boost::system::error_code& error);
+  server(boost::asio::io_service &io_service, short port,
+         std::shared_ptr<HandlerRegistry> registry);
+
+  void handle_accept(session *new_session, const boost::system::error_code &error);
 
 private:
   void start_accept();
 
-  boost::asio::io_service& io_service_;
+  boost::asio::io_service &io_service_;
   tcp::acceptor acceptor_;
-  std::shared_ptr<HandlerRegistry> registry_; 
+  std::shared_ptr<HandlerRegistry> registry_;
 };
 
 #endif

@@ -5,15 +5,13 @@
 
 namespace http = boost::beast::http;
 
-class request_handler
-{
+class request_handler {
 public:
   virtual ~request_handler();
-  request_handler(const std::string& location, const std::string& root);
-  
-  virtual void handle_request(
-    http::request<http::string_body>& req,
-    http::response<http::string_body>& res) = 0;
+  request_handler(const std::string &location, const std::string &root);
+
+  virtual void handle_request(http::request<http::string_body> &req,
+                              http::response<http::string_body> &res) = 0;
 
   std::string get_prefix() const;
   std::string get_dir() const;

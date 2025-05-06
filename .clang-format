@@ -1,0 +1,13 @@
+BasedOnStyle:         LLVM
+IndentWidth:          2
+ColumnLimit:          100
+AllowShortFunctionsOnASingleLine: Inline
+BreakBeforeBraces:    Attach
+IncludeBlocks:        Preserve
+IncludeCategories:
+  - Regex:           '^<'
+    Priority:        1
+  - Regex:           'boost/'
+    Priority:        2
+  - Regex:           '\"'
+    Priority:        3

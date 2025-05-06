@@ -2,7 +2,8 @@
 
 namespace http = boost::beast::http;
 
-void echo_handler::handle_request(http::request<http::string_body>& req, http::response<http::string_body>& res) {
+void echo_handler::handle_request(http::request<http::string_body> &req,
+                                  http::response<http::string_body> &res) {
   std::ostringstream oss;
   oss << req;
 

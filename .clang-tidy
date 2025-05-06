@@ -1,0 +1,13 @@
+Checks: >
+  clang-analyzer-*,
+  bugprone-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,        # noise with boost::asio
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -hicpp-*                                    # overlap / noise
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(src|include)/.*'
+FormatStyle:     none

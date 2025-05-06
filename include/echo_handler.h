@@ -5,11 +5,11 @@
 
 namespace http = boost::beast::http;
 
-class echo_handler : public request_handler
-{
+class echo_handler : public request_handler {
 public:
   using request_handler::request_handler;
-  void handle_request(http::request<http::string_body>& req, http::response<http::string_body>& res) override;
+  void handle_request(http::request<http::string_body> &req,
+                      http::response<http::string_body> &res) override;
 };
 
 #endif

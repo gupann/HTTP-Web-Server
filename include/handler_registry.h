@@ -2,8 +2,8 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "request_handler.h"
 #include "config_parser.h"
+#include "request_handler.h"
 
 // ------------------------------------------------------------------
 // HandlerRegistry
@@ -14,14 +14,14 @@
 // * Chooses a handler at request time via longest-prefix match.
 // ------------------------------------------------------------------
 class HandlerRegistry {
- public:
-  bool Init(const NginxConfig& config);               // build mappings
-  request_handler* Match(const std::string& uri) const;  // look-up
+public:
+  bool Init(const NginxConfig &config);                 // build mappings
+  request_handler *Match(const std::string &uri) const; // look-up
 
- private:
+private:
   struct Mapping {
     std::string prefix;                       // e.g. "/static"
     std::unique_ptr<request_handler> handler; // EchoHandler, StaticHandler…
   };
-  std::vector<Mapping> mappings_;             // sorted longest→shortest
+  std::vector<Mapping> mappings_; // sorted longest→shortest
 };

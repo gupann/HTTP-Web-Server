@@ -82,3 +82,28 @@ include(cmake/CodeCoverageReportConfig.cmake)
 generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib TESTS session_test config_parser_test server_test request_handler_test handler_registry_test)
 
 add_test(NAME integration_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} COMMAND bash tests/integration_test.sh)
+
+# ---- clang-format target -------------------------------------------------
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+if(CLANG_FORMAT_EXE)
+  file(GLOB_RECURSE ALL_CXX_SOURCE
+       CONFIGURE_DEPENDS
+       src/*.cc include/*.h tests/*.cc)
+  add_custom_target(
+    clang_format
+    COMMAND ${CLANG_FORMAT_EXE}
+            -i
+            --style=file
+            ${ALL_CXX_SOURCE}
+    COMMENT "Running clang-format on all source files")
+endif()
+
+# ---- clang-tidy target ---------------------------------------------------
+find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+if(CLANG_TIDY_EXE)
+  set(CMAKE_CXX_CLANG_TIDY
+      "${CLANG_TIDY_EXE};--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
+  add_custom_target(
+    clang_tidy
+    COMMENT "clang-tidy checks run automatically at compile time")
+endif()

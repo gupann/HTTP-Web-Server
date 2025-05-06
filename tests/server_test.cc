@@ -1,16 +1,15 @@
-#include "gtest/gtest.h"
+#include <boost/asio.hpp>
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "handler_registry.h"
 #include "server.h"
 #include "session.h"
-#include "handler_registry.h"
-#include <boost/asio.hpp>
 
 using ::testing::StrictMock;
 
 // 1) a mockable session
 struct MockSession : session {
-  MockSession(boost::asio::io_service& io,
-              std::shared_ptr<HandlerRegistry> reg)
+  MockSession(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
       : session(io, std::move(reg)) {}
   MOCK_METHOD(void, start, (), (override));
 };
@@ -20,8 +19,7 @@ static bool session_deleted_flag = false;
 
 // TempSession at namespace scope
 struct TempSession : MockSession {
-  TempSession(boost::asio::io_service& io,
-              std::shared_ptr<HandlerRegistry> reg)
+  TempSession(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
       : MockSession(io, std::move(reg)) {}
   ~TempSession() override { session_deleted_flag = true; }
 };
@@ -30,10 +28,9 @@ struct TempSession : MockSession {
 class ServerTest : public ::testing::Test {
 protected:
   boost::asio::io_service io_;
-  std::shared_ptr<HandlerRegistry> registry_ =
-      std::make_shared<HandlerRegistry>();
+  std::shared_ptr<HandlerRegistry> registry_ = std::make_shared<HandlerRegistry>();
 
-  StrictMock<MockSession>* mock_sess_;
+  StrictMock<MockSession> *mock_sess_;
   std::unique_ptr<server> srv_;
 
   void SetUp() override {
@@ -41,9 +38,7 @@ protected:
     srv_ = std::make_unique<server>(io_, /*port=*/5555, registry_);
   }
 
-  void TearDown() override {
-    delete mock_sess_;
-  }
+  void TearDown() override { delete mock_sess_; }
 };
 
 // 3) success path: handle_accept should call start()
@@ -56,7 +51,7 @@ TEST_F(ServerTest, HandleAcceptSuccess_CallsStart) {
 // 4) error path: handle_accept should delete session
 TEST_F(ServerTest, HandleAcceptError_DeletesSession) {
   session_deleted_flag = false;
-  auto* temp = new TempSession(io_, registry_);
+  auto *temp = new TempSession(io_, registry_);
   boost::system::error_code ec = boost::asio::error::operation_aborted;
   srv_->handle_accept(temp, ec);
   EXPECT_TRUE(session_deleted_flag) << "session was not deleted on error";

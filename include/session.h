@@ -1,34 +1,34 @@
 #ifndef SESSION_H
 #define SESSION_H
 
-#include "request_handler.h"
-#include "handler_registry.h" 
-#include <unordered_map>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include <chrono>
+#include <unordered_map>
+#include "handler_registry.h"
+#include "request_handler.h"
 
 namespace http = boost::beast::http;
 using boost::asio::ip::tcp;
 
 class session : public std::enable_shared_from_this<session> {
 public:
-  session(boost::asio::io_service& io_service, std::shared_ptr<HandlerRegistry> registry);
+  session(boost::asio::io_service &io_service, std::shared_ptr<HandlerRegistry> registry);
 
   virtual ~session();
 
-  tcp::socket& socket();
+  tcp::socket &socket();
 
   virtual void start();
 
   http::response<http::string_body> get_response();
 
   void set_request(http::request<http::string_body> req);
-  void call_handle_read(const boost::system::error_code& error, size_t bytes_transferred);
-  void handle_write(const boost::system::error_code& error, size_t bytes_transferred);
+  void call_handle_read(const boost::system::error_code &error, size_t bytes_transferred);
+  void handle_write(const boost::system::error_code &error, size_t bytes_transferred);
 
 private:
-  void handle_read(const boost::system::error_code& error, size_t bytes_transferred);
+  void handle_read(const boost::system::error_code &error, size_t bytes_transferred);
 
   tcp::socket socket_;
 
