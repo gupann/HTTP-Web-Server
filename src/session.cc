@@ -1,5 +1,4 @@
 #include "session.h"
-#include <boost/bind.hpp>
 #include <boost/log/trivial.hpp>
 #include <iostream> // for server debugging output
 #include <sstream>
@@ -25,8 +24,9 @@ void session::start() {
   start_time_ = Clock::now();
 
   http::async_read(socket_, buffer_, req_,
-                   boost::bind(&session::handle_read, this, boost::asio::placeholders::error,
-                               boost::asio::placeholders::bytes_transferred));
+                   [this](const boost::system::error_code &ec, std::size_t bytes) {
+                     this->handle_read(ec, bytes);
+                   });
 }
 
 void session::call_handle_read(const boost::system::error_code &error, size_t bytes_transferred) {
@@ -72,9 +72,9 @@ void session::handle_read(const boost::system::error_code &error, std::size_t by
   }
   h->handle_request(req_, res_);
 
-  http::async_write(socket_, res_,
-                    boost::bind(&session::handle_write, this, boost::asio::placeholders::error,
-                                boost::asio::placeholders::bytes_transferred));
+  http::async_write(socket_, res_, [this](const boost::system::error_code &ec, std::size_t bytes) {
+    this->handle_write(ec, bytes);
+  });
 }
 
 void session::handle_write(const boost::system::error_code &error, std::size_t bytes_transferred) {

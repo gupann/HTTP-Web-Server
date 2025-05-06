@@ -1,5 +1,4 @@
 #include "server.h"
-#include <boost/bind.hpp>
 
 using namespace wasd::http;
 
@@ -12,9 +11,10 @@ server::server(boost::asio::io_service &io_service, short port,
 
 void server::start_accept() {
   session *new_session = new session(io_service_, registry_);
-  acceptor_.async_accept(
-      new_session->socket(),
-      boost::bind(&server::handle_accept, this, new_session, boost::asio::placeholders::error));
+  acceptor_.async_accept(new_session->socket(),
+                         [this, new_session](const boost::system::error_code &error) {
+                           this->handle_accept(new_session, error);
+                         });
 }
 
 void server::handle_accept(session *new_session, const boost::system::error_code &error) {
