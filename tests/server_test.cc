@@ -5,6 +5,8 @@
 #include "server.h"
 #include "session.h"
 
+using namespace wasd::http;
+
 using ::testing::StrictMock;
 
 // 1) a mockable session

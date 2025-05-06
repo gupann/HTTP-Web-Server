@@ -5,6 +5,8 @@
 #include "config_parser.h"
 #include "request_handler.h"
 
+namespace wasd::http {
+
 // ------------------------------------------------------------------
 // HandlerRegistry
 // ------------------------------------------------------------------
@@ -25,3 +27,5 @@ private:
   };
   std::vector<Mapping> mappings_; // sorted longest→shortest
 };
+
+} // namespace wasd::http

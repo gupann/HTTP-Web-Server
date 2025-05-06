@@ -7,6 +7,8 @@
 #include "static_handler.h"
 using Clock = std::chrono::steady_clock; // alias
 
+using namespace wasd::http;
+
 namespace http = boost::beast::http;
 
 session::session(boost::asio::io_service &io_service, std::shared_ptr<HandlerRegistry> registry)

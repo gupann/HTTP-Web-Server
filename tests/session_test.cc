@@ -6,6 +6,8 @@
 #include "handler_registry.h"
 #include "session.h"
 
+using namespace wasd::http;
+
 namespace http = boost::beast::http;
 
 class SessionTest : public ::testing::Test {

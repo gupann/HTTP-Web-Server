@@ -2,6 +2,8 @@
 #include "config_parser.h"
 #include "gtest/gtest.h"
 
+using namespace wasd::http;
+
 class NginxConfigParserTestFixture : public testing::Test {
 protected:
   NginxConfigParserTestFixture() {}
