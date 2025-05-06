@@ -4,6 +4,8 @@
 #include <boost/log/trivial.hpp>
 #include <string>
 
+namespace wasd::http {
+
 namespace logger {
 
 void init(const std::string &file_pattern = "logs/server_%Y-%m-%d_%N.log");
@@ -11,3 +13,4 @@ void init(const std::string &file_pattern = "logs/server_%Y-%m-%d_%N.log");
 }
 
 #endif
+}

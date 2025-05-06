@@ -5,6 +5,8 @@
 #include <iostream>
 #include <unordered_map>
 
+using namespace wasd::http;
+
 namespace http = boost::beast::http;
 
 // Basic URL Decoder (Handles %20 -> space, + -> space)

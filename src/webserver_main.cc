@@ -6,6 +6,8 @@
 #include "logger.h"
 #include "server.h"
 
+using namespace wasd::http;
+
 int main(int argc, char *argv[]) {
   logger::init();
   BOOST_LOG_TRIVIAL(info) << "Server starting";

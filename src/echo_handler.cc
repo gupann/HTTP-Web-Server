@@ -1,5 +1,7 @@
 #include "echo_handler.h"
 
+using namespace wasd::http;
+
 namespace http = boost::beast::http;
 
 void echo_handler::handle_request(http::request<http::string_body> &req,

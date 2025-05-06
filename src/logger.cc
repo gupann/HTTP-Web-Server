@@ -7,6 +7,8 @@
 #include <boost/log/utility/setup/file.hpp>
 #include <ios>
 
+using namespace wasd::http;
+
 namespace logging = boost::log;
 namespace sinks = boost::log::sinks;
 namespace expr = boost::log::expressions;
