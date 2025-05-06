@@ -18,8 +18,6 @@
 #include <boost/log/trivial.hpp>
 #include "config_parser.h"
 
-using namespace wasd::http;
-
 std::string NginxConfig::ToString(int depth) {
   std::string serialized_config;
   for (const auto &statement : statements_) {
@@ -278,7 +276,6 @@ bool NginxConfigParser::Parse(const char *file_name, NginxConfig *config) {
   return return_value;
 }
 
-namespace wasd::http {
 // get port number from config file in Nginx format
 int GetPort(const NginxConfig &config) {
   for (auto statement : config.statements_) {
@@ -288,4 +285,3 @@ int GetPort(const NginxConfig &config) {
   }
   return 0;
 }
-} // namespace wasd::http

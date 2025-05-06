@@ -4,8 +4,6 @@
 #include "echo_handler.h"
 #include "static_handler.h"
 
-using namespace wasd::http;
-
 // Helper: create the correct concrete handler
 static std::unique_ptr<request_handler>
 MakeHandler(const std::string &type, const std::string &prefix, const NginxConfig *child_block) {

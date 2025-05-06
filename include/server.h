@@ -7,8 +7,6 @@
 
 using boost::asio::ip::tcp;
 
-namespace wasd::http {
-
 class server {
 public:
   server(boost::asio::io_service &io_service, short port,
@@ -23,7 +21,5 @@ private:
   tcp::acceptor acceptor_;
   std::shared_ptr<HandlerRegistry> registry_;
 };
-
-} // namespace wasd::http
 
 #endif

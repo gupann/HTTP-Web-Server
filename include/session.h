@@ -8,8 +8,6 @@
 #include "handler_registry.h"
 #include "request_handler.h"
 
-namespace wasd::http {
-
 namespace http = boost::beast::http;
 using boost::asio::ip::tcp;
 
@@ -44,7 +42,5 @@ private:
 
   std::shared_ptr<HandlerRegistry> registry_;
 };
-
-} // namespace wasd::http
 
 #endif

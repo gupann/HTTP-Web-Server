@@ -3,8 +3,6 @@
 
 #include <boost/beast.hpp>
 
-namespace wasd::http {
-
 namespace http = boost::beast::http;
 
 class request_handler {
@@ -22,7 +20,5 @@ private:
   std::string prefix_;
   std::string dir_;
 };
-
-} // namespace wasd::http
 
 #endif

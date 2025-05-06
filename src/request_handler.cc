@@ -1,7 +1,5 @@
 #include "request_handler.h"
 
-using namespace wasd::http;
-
 request_handler::request_handler(const std::string &location, const std::string &root)
     : prefix_(location), dir_(root) {}
 

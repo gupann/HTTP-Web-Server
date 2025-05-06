@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-namespace wasd::http {
-
 class NginxConfig;
 
 // The parsed representation of a single config statement.
@@ -64,4 +62,3 @@ private:
 
 // get port number from config file in Nginx format
 int GetPort(const NginxConfig &config);
-} // namespace wasd::http

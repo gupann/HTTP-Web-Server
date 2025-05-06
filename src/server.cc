@@ -1,8 +1,6 @@
 #include "server.h"
 #include <boost/bind.hpp>
 
-using namespace wasd::http;
-
 server::server(boost::asio::io_service &io_service, short port,
                std::shared_ptr<HandlerRegistry> registry)
     : io_service_(io_service), acceptor_(io_service, tcp::endpoint(tcp::v4(), port)),
