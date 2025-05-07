@@ -1,17 +1,14 @@
 #include "session.h"
 #include <boost/log/trivial.hpp>
-#include <iostream> // for server debugging output
-#include <sstream>
 #include "echo_handler.h"
 #include "static_handler.h"
-using Clock = std::chrono::steady_clock; // alias
 
+using Clock = std::chrono::steady_clock;
 using namespace wasd::http;
-
 namespace http = boost::beast::http;
 
-session::session(boost::asio::io_service &io_service, std::shared_ptr<HandlerRegistry> registry)
-    : socket_(io_service), registry_(std::move(registry)) {}
+session::session(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
+    : socket_(io), registry_(std::move(reg)) {}
 
 // Define virtual constructor
 session::~session() = default;
@@ -23,44 +20,29 @@ tcp::socket &session::socket() {
 void session::start() {
   start_time_ = Clock::now();
 
-  http::async_read(socket_, buffer_, req_,
-                   [this](const boost::system::error_code &ec, std::size_t bytes) {
-                     this->handle_read(ec, bytes);
-                   });
+  http::async_read(
+      socket_, buffer_, req_,
+      // capture raw this - server doesn’t own shared_ptr
+      [this](const boost::system::error_code &ec, std::size_t bytes) { handle_read(ec, bytes); });
 }
 
-void session::call_handle_read(const boost::system::error_code &error, size_t bytes_transferred) {
-  handle_read(error, bytes_transferred);
+static std::string safe_endpoint(const tcp::socket &sock) {
+  try {
+    return sock.remote_endpoint().address().to_string();
+  } catch (...) {
+    return "unknown";
+  }
 }
 
-http::response<http::string_body> session::get_response() {
-  return res_;
-}
-
-void session::set_request(http::request<http::string_body> req) {
-  req_ = req;
-}
-
-void session::handle_read(const boost::system::error_code &error, std::size_t bytes_transferred) {
-
+void session::handle_read(const boost::system::error_code &error,
+                          std::size_t /*bytes_transferred*/) {
   if (error == http::error::end_of_stream) {
-    std::string ip = "unknown";
-    try {
-      ip = socket_.remote_endpoint().address().to_string();
-    } catch (...) {
-    }
-    BOOST_LOG_TRIVIAL(info) << ip << " Connection closed by client (EOF)";
+    BOOST_LOG_TRIVIAL(info) << safe_endpoint(socket_) << " EOF";
     delete this;
     return;
   }
-
   if (error) {
-    std::string ip = "unknown";
-    try {
-      ip = socket_.remote_endpoint().address().to_string();
-    } catch (...) {
-    }
-    BOOST_LOG_TRIVIAL(error) << ip << " handle_read error: " << error.message();
+    BOOST_LOG_TRIVIAL(error) << safe_endpoint(socket_) << " read error: " << error.message();
     delete this;
     return;
   }
@@ -68,18 +50,18 @@ void session::handle_read(const boost::system::error_code &error, std::size_t by
   request_handler *h = registry_->Match(std::string(req_.target()));
   if (!h) {
     static echo_handler default_echo("/", "");
-    h = &default_echo;
+    h = &default_echo; // default echo if no match
   }
   h->handle_request(req_, res_);
 
   http::async_write(socket_, res_, [this](const boost::system::error_code &ec, std::size_t bytes) {
-    this->handle_write(ec, bytes);
+    handle_write(ec, bytes);
   });
 }
 
 void session::handle_write(const boost::system::error_code &error, std::size_t bytes_transferred) {
   // compute latency
-  auto latency_ms =
+  auto latency =
       std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start_time_).count();
 
   if (error) {
@@ -88,15 +70,9 @@ void session::handle_write(const boost::system::error_code &error, std::size_t b
     return;
   }
 
-  // structured per request log
-  try {
-    auto ip = socket_.remote_endpoint().address().to_string();
-    BOOST_LOG_TRIVIAL(info) << ip << " " << req_.method_string() << " " << req_.target() << " => "
-                            << res_.result_int() << " " << latency_ms << "ms " << bytes_transferred
-                            << "B";
-  } catch (...) {
-    BOOST_LOG_TRIVIAL(warning) << "Could not log remote endpoint";
-  }
+  BOOST_LOG_TRIVIAL(info) << safe_endpoint(socket_) << ' ' << req_.method_string() << ' '
+                          << req_.target() << " => " << res_.result_int() << ' ' << latency << "ms "
+                          << bytes_transferred << 'B';
 
   if (req_.keep_alive()) {
     start();

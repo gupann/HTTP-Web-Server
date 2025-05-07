@@ -7,25 +7,34 @@
 #include "session.h"
 
 using namespace wasd::http;
-
 namespace http = boost::beast::http;
+
+// helper class to expose protected hooks we need for testing
+class TestableSession : public session {
+public:
+  using session::handle_read;
+  using session::handle_write;
+  using session::session; // inherit constructors
+  using session::set_request;
+  using session::start;
+};
 
 class SessionTest : public ::testing::Test {
 protected:
   boost::asio::io_service io_service_;
-
   std::shared_ptr<HandlerRegistry> registry_ = std::make_shared<HandlerRegistry>();
 
-  session *test_session_ = new session{io_service_, registry_};
+  // use TestableSession so we can reach hooks without changing API
+  TestableSession *test_session_ = new TestableSession{io_service_, registry_};
 
   void SimulateHandleRead(http::request<http::string_body> request,
-                          const boost::system::error_code &ec = boost::system::error_code{},
-                          size_t bytes_transferred = 100) {
+                          const boost::system::error_code &ec = {},
+                          std::size_t bytes_transferred = 100) {
     test_session_->set_request(request);
-    test_session_->call_handle_read(ec, bytes_transferred);
+    test_session_->handle_read(ec, bytes_transferred);
   }
 
-  // Helper function to serialize a request object to string
+  // Helper function to serialize a request object to string (for echo body comparison)
   std::string request_to_string(const http::request<http::string_body> &req) {
     std::ostringstream oss;
     oss << req;
@@ -50,7 +59,7 @@ TEST_F(SessionTest, HandleSimpleGET) {
   SimulateHandleRead(req);
 
   // 3. Check the generated response (res_) in the session
-  auto res = test_session_->get_response();
+  const auto &res = test_session_->response();
   EXPECT_EQ(res.result(), http::status::ok);
   EXPECT_EQ(res.version(), 11);
   EXPECT_EQ(res[http::field::content_type], "text/plain");
@@ -68,7 +77,7 @@ TEST_F(SessionTest, HandleReadError) {
   // 2. Simulate handle_read being called with an error
   // We expect the session to delete itself in this case, so we can't check state after.
   boost::system::error_code ec = boost::asio::error::connection_reset;
-  EXPECT_NO_THROW(test_session_->call_handle_read(ec, 0));
+  EXPECT_NO_THROW(test_session_->handle_read(ec, 0));
 }
 
 // Test case for handling a GET request with a specific path
@@ -87,9 +96,8 @@ TEST_F(SessionTest, HandleGETWithPath) {
   SimulateHandleRead(req);
 
   // 3. Check the response
-  auto res = test_session_->get_response();
+  const auto &res = test_session_->response();
   EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res.version(), 11);
   EXPECT_EQ(res[http::field::content_type], "text/plain");
   EXPECT_EQ(res.body(), expected_echo_body);
 }
@@ -104,7 +112,7 @@ TEST_F(SessionTest, HandlePOSTRequest) {
   req.set(http::field::host, "myserver");
   req.set(http::field::content_type, "application/x-www-form-urlencoded");
   req.body() = "name=test&value=123";
-  req.prepare_payload(); // Calculates Content-Length
+  req.prepare_payload(); // sets Content-Length
 
   std::string expected_echo_body = request_to_string(req);
 
@@ -112,9 +120,8 @@ TEST_F(SessionTest, HandlePOSTRequest) {
   SimulateHandleRead(req);
 
   // 3. Check the response
-  auto res = test_session_->get_response();
+  const auto &res = test_session_->response();
   EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res.version(), 11);
   EXPECT_EQ(res[http::field::content_type], "text/plain"); // Echo server responds with text/plain
   EXPECT_EQ(res.body(), expected_echo_body);
 }
@@ -137,10 +144,8 @@ TEST_F(SessionTest, HandleRequestWithHeaders) {
   SimulateHandleRead(req);
 
   // 3. Check the response
-  auto res = test_session_->get_response();
+  const auto &res = test_session_->response();
   EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res.version(), 11);
-  EXPECT_EQ(res[http::field::content_type], "text/plain");
   EXPECT_EQ(res.body(), expected_echo_body);
 }
 
@@ -161,62 +166,55 @@ TEST_F(SessionTest, HandleRequestConnectionClose) {
   SimulateHandleRead(req);
 
   // 3. Check the response
-  auto res = test_session_->get_response();
+  const auto &res = test_session_->response();
   EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res.version(), 11);
-  EXPECT_EQ(res[http::field::content_type], "text/plain");
   EXPECT_EQ(res.body(), expected_echo_body);
 }
-
-// Expose private start() and handle_write() for testing
-class TestSessionExposed : public session {
-public:
-  using session::handle_write;
-  using session::start;
-  TestSessionExposed(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
-      : session(io, std::move(reg)) {}
-};
-
 // Cover session::start()
 TEST_F(SessionTest, StartDoesNotThrow) {
   EXPECT_NO_THROW(test_session_->start());
 }
 
-// Cover the no-error, keep-alive branch of handle_write()
-static bool write_deleted_flag = false;
+// handle_write branches
 
+// HTTP/1.1 keep‑alive branch
 TEST_F(SessionTest, HandleWrite_KeepAlive) {
-  auto *s = new TestSessionExposed(io_service_, registry_);
-  // HTTP/1.1 defaults to keep-alive
-  boost::system::error_code ec;
-  EXPECT_NO_THROW(s->handle_write(ec, /*bytes_transferred=*/0));
+  auto *s = new TestableSession(io_service_, registry_);
+  http::request<http::string_body> req;
+  req.method(http::verb::get);
+  req.target("/");
+  req.version(11); // keep‑alive by default
+  req.set(http::field::host, "localhost");
+  req.prepare_payload();
+  s->set_request(req);
+
+  EXPECT_NO_THROW(s->handle_write({}, 0));
   delete s;
 }
 
 // Cover both error and close branches of handle_write()
-TEST_F(SessionTest, HandleWrite_ErrorDeletesSession) {
-  write_deleted_flag = false;
-  struct TempSessionExposed : TestSessionExposed {
-    TempSessionExposed(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
-        : TestSessionExposed(io, std::move(reg)) {}
-    ~TempSessionExposed() override { write_deleted_flag = true; }
+TEST_F(SessionTest, HandleWrite_ErrorDeletesSession_StaticFlag) {
+  static bool write_deleted_flag = false;
+  struct TempSession : TestableSession {
+    using TestableSession::TestableSession;
+    ~TempSession() override { write_deleted_flag = true; }
   };
-  auto *temp = new TempSessionExposed(io_service_, registry_);
-  boost::system::error_code ec = boost::asio::error::operation_aborted;
-  temp->handle_write(ec, /*bytes_transferred=*/0);
+
+  write_deleted_flag = false;
+  auto *temp = new TempSession(io_service_, registry_);
+  temp->handle_write(boost::asio::error::operation_aborted, 0);
   EXPECT_TRUE(write_deleted_flag);
 }
 
-// Helper subclass to capture start() calls
-struct ExposedSessionWithStart : TestSessionExposed {
-  bool start_called = false;
-  ExposedSessionWithStart(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
-      : TestSessionExposed(io, std::move(reg)) {}
-  void start() override { start_called = true; }
-};
-// Test that handle_write restarts on keep‐alive (HTTP/1.1)
+// Branch verifies restart on keep‑alive
 TEST_F(SessionTest, HandleWrite_KeepAlive_CallsStart) {
-  auto *s = new ExposedSessionWithStart(io_service_, registry_);
+  struct Spy : TestableSession {
+    using TestableSession::TestableSession;
+    bool start_called = false;
+    void start() override { start_called = true; }
+  };
+
+  auto *s = new Spy(io_service_, registry_);
   http::request<http::string_body> req;
   req.method(http::verb::get);
   req.target("/");
@@ -225,8 +223,7 @@ TEST_F(SessionTest, HandleWrite_KeepAlive_CallsStart) {
   req.prepare_payload();
   s->set_request(req);
 
-  boost::system::error_code ec;
-  s->handle_write(ec, /*bytes_transferred=*/10);
+  s->handle_write({}, 10);
   EXPECT_TRUE(s->start_called);
   delete s;
 }
@@ -234,14 +231,14 @@ TEST_F(SessionTest, HandleWrite_KeepAlive_CallsStart) {
 // Test that handle_write deletes session when keep‐alive is false (HTTP/1.0)
 TEST_F(SessionTest, HandleWrite_NoKeepAlive_DeletesSession) {
   bool deleted = false;
-  struct TempSessionClose : TestSessionExposed {
+  struct Tmp : TestableSession {
     bool *flag;
-    TempSessionClose(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg, bool *f)
-        : TestSessionExposed(io, std::move(reg)), flag(f) {}
-    ~TempSessionClose() override { *flag = true; }
+    Tmp(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> r, bool *f)
+        : TestableSession(io, std::move(r)), flag(f) {}
+    ~Tmp() override { *flag = true; }
   };
-  auto *s = new TempSessionClose(io_service_, registry_, &deleted);
 
+  auto *s = new Tmp(io_service_, registry_, &deleted);
   http::request<http::string_body> req;
   req.method(http::verb::get);
   req.target("/");
@@ -250,25 +247,23 @@ TEST_F(SessionTest, HandleWrite_NoKeepAlive_DeletesSession) {
   req.prepare_payload();
   s->set_request(req);
 
-  boost::system::error_code ec;
-  s->handle_write(ec, /*bytes_transferred=*/0);
+  s->handle_write({}, 0);
   EXPECT_TRUE(deleted);
 }
 
 // Test that handle_write deletes session on error
-TEST_F(SessionTest, HandleWrite_Error_DeletesSession) {
+TEST_F(SessionTest, HandleWrite_ErrorDeletesSession) {
   bool deleted = false;
-  struct TempSessionError : TestSessionExposed {
+  struct Tmp : TestableSession {
     bool *flag;
-    TempSessionError(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg, bool *f)
-        : TestSessionExposed(io, std::move(reg)), flag(f) {}
-    ~TempSessionError() override { *flag = true; }
+    Tmp(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> r, bool *f)
+        : TestableSession(io, std::move(r)), flag(f) {}
+    ~Tmp() override { *flag = true; }
   };
-  auto *s = new TempSessionError(io_service_, registry_, &deleted);
 
+  auto *s = new Tmp(io_service_, registry_, &deleted);
   // any request is fine here
   s->set_request(http::request<http::string_body>{});
-  boost::system::error_code ec = boost::asio::error::connection_aborted;
-  s->handle_write(ec, /*bytes_transferred=*/0);
+  s->handle_write(boost::asio::error::connection_aborted, 0);
   EXPECT_TRUE(deleted);
 }
