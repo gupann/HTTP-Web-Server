@@ -45,6 +45,58 @@ bool HandlerRegistry::Init(const NginxConfig &config) {
     const std::string &prefix = stmt->tokens_[1]; // e.g. /static1
     const std::string &type = stmt->tokens_[2];   // e.g. StaticHandler
 
+    // Enforce that a child block must exist for handler definitions
+    if (!stmt->child_block_) {
+      BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
+                               << "' at location '" << prefix
+                               << "': Missing required '{...}' block.";
+      return false; // Fail initialization
+    }
+
+    // DO NOT USE UNTIL CONFIG PARSER HAS BEEN DISCUSSED
+    // // Validate "The presence of quoting around strings (e.g. the serving path) is not
+    // supported." if (prefix.length() >= 2 && ((prefix.front() == '"' && prefix.back() == '"') ||
+    //                              (prefix.front() == '\'' && prefix.back() == '\''))) {
+    //   BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
+    //                            << "' at location " << prefix // Log the token with quotes
+    //                            << ": Serving path must not be enclosed in quotes.";
+    //   return false; // Fail initialization
+    // }
+
+    // Validate that paths must start with '/'
+    if (prefix.empty() || prefix.front() != '/') {
+      BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
+                               << "' at location '" << prefix
+                               << "': Serving path must start with '/'.";
+      return false; // Fail initialization
+    }
+
+    // Validate "Trailing slashes on URL serving paths are prohibited."
+    // We allow "/" as a valid root path, but any other path like "/foo/" is invalid.
+    if (prefix.length() > 1 && prefix.back() == '/') {
+      BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
+                               << "' at location '" << prefix
+                               << "': Serving path must not have a trailing slash.";
+      return false; // Fail initialization
+    }
+
+    // Validate "Duplicate locations in the config should result in the server failing at startup."
+    for (const auto &existing_mapping : mappings_) {
+      if (existing_mapping.prefix == prefix) {
+        BOOST_LOG_TRIVIAL(error)
+            << "Configuration error: Duplicate location prefix '" << prefix
+            << "' defined for handler type '" << type << "'. Previously defined for handler type '"
+            << (existing_mapping.handler
+                    ? "some_handler_type"
+                    : "unknown") // Placeholder, ideally get type from existing handler
+            << "'.";
+        // To get the actual type of the existing handler, you might need to add a way for handlers
+        // to report their type, or store the type string alongside the handler in the Mapping
+        // struct. For now, a generic message is used.
+        return false; // Fail initialization
+      }
+    }
+
     auto h = MakeHandler(type, prefix, stmt->child_block_.get());
     if (!h)
       return false;

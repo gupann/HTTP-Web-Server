@@ -53,7 +53,7 @@ TEST_F(NginxConfigParserTestFixture, StatementEmptyConfig) {
 
   }
   )";
-  EXPECT_FALSE(ParseString(config_content));
+  EXPECT_TRUE(ParseString(config_content));
 }
 
 TEST_F(NginxConfigParserTestFixture, NestedEmptyConfig) {

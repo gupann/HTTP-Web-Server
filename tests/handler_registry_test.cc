@@ -25,7 +25,7 @@ TEST_F(HandlerRegistryTest, InitWithMultipleHandlers) {
         location / StaticHandler {
             root ./static;
         }
-        location /echo EchoHandler;
+        location /echo EchoHandler {}
     )";
 
   ASSERT_TRUE(ParseConfig(config_str));
@@ -59,7 +59,7 @@ TEST_F(HandlerRegistryTest, LongestPrefixMatch) {
         location / StaticHandler {
             root ./static;
         }
-        location /api EchoHandler;
+        location /api EchoHandler {}
         location /api/v1 StaticHandler {
             root ./api_static;
         }
@@ -87,7 +87,7 @@ TEST_F(HandlerRegistryTest, LongestPrefixMatch) {
 // Test initialization with invalid handler type
 TEST_F(HandlerRegistryTest, InvalidHandlerType) {
   std::string config_str = R"(
-        location / UnknownHandler;
+        location / UnknownHandler {}
     )";
 
   ASSERT_TRUE(ParseConfig(config_str));
@@ -137,7 +137,7 @@ TEST_F(HandlerRegistryTest, RootHandlerWithSpecificDirectory) {
 // Test no match returns nullptr
 TEST_F(HandlerRegistryTest, NoMatchReturnsNullptr) {
   std::string config_str = R"(
-        location /api EchoHandler;
+        location /api EchoHandler {}
     )";
 
   ASSERT_TRUE(ParseConfig(config_str));
@@ -145,3 +145,134 @@ TEST_F(HandlerRegistryTest, NoMatchReturnsNullptr) {
 
   EXPECT_EQ(registry_.Match("/nonexistent"), nullptr);
 }
+
+TEST_F(HandlerRegistryTest, HandlerDefinitionRequiresBlock) {
+  std::string config_str = R"(
+    port 80;
+    location /echo EchoHandler;
+  )";
+  // Assuming ParseConfig populates this->config_
+  ASSERT_TRUE(ParseConfig(config_str));
+  // Init should fail because EchoHandler is missing its {} block
+  EXPECT_FALSE(registry_.Init(config_));
+}
+
+TEST_F(HandlerRegistryTest, HandlerDefinitionWithEmptyBlockIsValid) {
+  std::string config_str = R"(
+    port 80;
+    location /echo EchoHandler {}
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_TRUE(registry_.Init(config_));
+}
+
+TEST_F(HandlerRegistryTest, PathWithTrailingSlashIsInvalid) {
+  std::string config_str = R"(
+    port 80;
+    location /echo/ EchoHandler {}
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_FALSE(registry_.Init(config_))
+      << "HandlerRegistry::Init should fail if a serving path has a trailing slash.";
+}
+
+TEST_F(HandlerRegistryTest, RootPathWithoutTrailingSlashIsValid) {
+  std::string config_str = R"(
+    port 80;
+    location / StaticHandler { root ./static; }
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_TRUE(registry_.Init(config_))
+      << "HandlerRegistry::Init should succeed for the root path '/'.";
+}
+
+TEST_F(HandlerRegistryTest, NonRootPathWithoutTrailingSlashIsValid) {
+  std::string config_str = R"(
+    port 80;
+    location /api EchoHandler {}
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_TRUE(registry_.Init(config_))
+      << "HandlerRegistry::Init should succeed for a non-root path without a trailing slash.";
+}
+
+TEST_F(HandlerRegistryTest, PathNotStartingWithSlashIsInvalid) {
+  std::string config_str = R"(
+    port 80;
+    location a StaticHandler { root ./static; }
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_FALSE(registry_.Init(config_))
+      << "HandlerRegistry::Init should fail if a serving path does not start with '/'.";
+}
+
+TEST_F(HandlerRegistryTest, DuplicateLocationPrefixIsInvalid) {
+  std::string config_str = R"(
+    port 80;
+    location /api EchoHandler {}
+    location /api StaticHandler { root ./static; }
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_FALSE(registry_.Init(config_))
+      << "HandlerRegistry::Init should fail if a duplicate location prefix is defined.";
+}
+
+TEST_F(HandlerRegistryTest, DifferentLocationPrefixesAreValid) {
+  std::string config_str = R"(
+    port 80;
+    location /api EchoHandler {}
+    location /api/v2 StaticHandler { root ./static; }
+  )";
+  ASSERT_TRUE(ParseConfig(config_str));
+  EXPECT_TRUE(registry_.Init(config_))
+      << "HandlerRegistry::Init should succeed with different location prefixes.";
+}
+
+// DO NOT USE UNTIL CONFIG PARSER HAS BEEN DISCUSSED FOR DOUBLE QUOTES
+
+// TEST_F(HandlerRegistryTest, PathWithDoubleQuotesIsInvalid) {
+//   std::string config_str = R"(
+//     port 80;
+//     location "/api" EchoHandler {}
+//   )";
+//   ASSERT_TRUE(ParseConfig(config_str));
+//   EXPECT_FALSE(registry_.Init(config_))
+//       << "HandlerRegistry::Init should fail if a serving path is enclosed in double quotes.";
+// }
+
+// TEST_F(HandlerRegistryTest, PathWithSingleQuotesIsInvalid) {
+//   std::string config_str = R"(
+//     port 80;
+//     location '/api' EchoHandler {}
+//   )";
+//   ASSERT_TRUE(ParseConfig(config_str));
+//   EXPECT_FALSE(registry_.Init(config_))
+//       << "HandlerRegistry::Init should fail if a serving path is enclosed in single quotes.";
+// }
+
+// // Modify the existing EmptyPathIsInvalid test
+// TEST_F(HandlerRegistryTest, EmptyPathIsInvalid) {
+//   std::string config_str_quoted_empty = R"(
+//     port 80;
+//     location "" StaticHandler { root ./static; }
+//   )";
+//   // This will now fail due to the "no quotes" rule.
+//   ASSERT_TRUE(ParseConfig(config_str_quoted_empty));
+//   EXPECT_FALSE(registry_.Init(config_))
+//       << "HandlerRegistry::Init should fail for a quoted empty serving path (due to quotes).";
+
+//   // Test for a truly empty token if the parser could produce one (hypothetical for now)
+//   // NginxConfigParser likely won't produce an empty unquoted token for `location ;`
+//   // but if it did, the `original_path_token.empty()` check in Init would catch it.
+//   // For example, if a config like `location ;` was valid for the parser and resulted in an empty
+//   // token: std::string config_str_truly_empty = "location ;"; // This is not valid Nginx config
+//   for
+//   // a location If such a config *could* be parsed to an empty path token: NginxConfig
+//   // temp_config_for_empty; NginxConfigStatement empty_path_stmt; empty_path_stmt.tokens_ =
+//   // {"location", "", "StaticHandler"}; // Manually create scenario std::unique_ptr<NginxConfig>
+//   // child = std::make_unique<NginxConfig>(); empty_path_stmt.child_block_ = std::move(child);
+//   //
+//   temp_config_for_empty.statements_.push_back(std::make_shared<NginxConfigStatement>(empty_path_stmt));
+//   // EXPECT_FALSE(registry_.Init(temp_config_for_empty))
+//   //     << "HandlerRegistry::Init should fail for a truly empty (unquoted) serving path.";
+// }

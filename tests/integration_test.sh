@@ -38,7 +38,7 @@ location /static1 StaticHandler {
     root $STATIC_ROOT/static1;
 }
 
-location /echo EchoHandler;
+location /echo EchoHandler {}
 EOF
 
     "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 & # run server in background

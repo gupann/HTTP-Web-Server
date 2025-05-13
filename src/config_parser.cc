@@ -229,7 +229,8 @@ bool NginxConfigParser::Parse(std::istream *config_file, NginxConfig *config) {
       config_stack.push(new_config);
     } else if (token_type == TOKEN_TYPE_END_BLOCK) {
       // A block must end only after a complete statement or another block.
-      if (last_token_type != TOKEN_TYPE_STATEMENT_END && last_token_type != TOKEN_TYPE_END_BLOCK) {
+      if (last_token_type != TOKEN_TYPE_STATEMENT_END && last_token_type != TOKEN_TYPE_END_BLOCK &&
+          last_token_type != TOKEN_TYPE_START_BLOCK) {
         // Error. unmatched closing brace or invalid block termination.
         break;
       }
