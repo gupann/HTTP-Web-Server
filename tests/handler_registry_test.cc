@@ -32,13 +32,15 @@ TEST_F(HandlerRegistryTest, InitWithMultipleHandlers) {
   EXPECT_TRUE(registry_.Init(config_));
 
   // Check that the registry has the correct mappings
-  request_handler *handler_root = registry_.Match("/");
+  HandlerFactory *handler_root = registry_.Match("/");
   ASSERT_NE(handler_root, nullptr);
-  EXPECT_TRUE(dynamic_cast<static_handler *>(handler_root) != nullptr);
+  auto h_root_1 = (*handler_root)();
+  EXPECT_TRUE(dynamic_cast<static_handler *>(h_root_1.get()) != nullptr);
 
-  request_handler *handler_echo = registry_.Match("/echo");
+  HandlerFactory *handler_echo = registry_.Match("/echo");
   ASSERT_NE(handler_echo, nullptr);
-  EXPECT_TRUE(dynamic_cast<echo_handler *>(handler_echo) != nullptr);
+  auto h_echo = (*handler_echo)();
+  EXPECT_TRUE(dynamic_cast<echo_handler *>(h_echo.get()) != nullptr);
 }
 
 // Test initialization with no handlers
@@ -69,19 +71,22 @@ TEST_F(HandlerRegistryTest, LongestPrefixMatch) {
   EXPECT_TRUE(registry_.Init(config_));
 
   // Root handler for "/"
-  request_handler *root_handler = registry_.Match("/");
+  HandlerFactory *root_handler = registry_.Match("/");
   ASSERT_NE(root_handler, nullptr);
-  EXPECT_TRUE(dynamic_cast<static_handler *>(root_handler) != nullptr);
+  auto h_root_2 = (*root_handler)();
+  EXPECT_TRUE(dynamic_cast<static_handler *>(h_root_2.get()) != nullptr);
 
   // API handler for "/api"
-  request_handler *api_handler = registry_.Match("/api");
+  HandlerFactory *api_handler = registry_.Match("/api");
   ASSERT_NE(api_handler, nullptr);
-  EXPECT_TRUE(dynamic_cast<echo_handler *>(api_handler) != nullptr);
+  auto h_api = (*api_handler)();
+  EXPECT_TRUE(dynamic_cast<echo_handler *>(h_api.get()) != nullptr);
 
   // Specific API v1 handler for "/api/v1"
-  request_handler *api_v1_handler = registry_.Match("/api/v1/users");
+  HandlerFactory *api_v1_handler = registry_.Match("/api/v1/users");
   ASSERT_NE(api_v1_handler, nullptr);
-  EXPECT_TRUE(dynamic_cast<static_handler *>(api_v1_handler) != nullptr);
+  auto h_api_v1 = (*api_v1_handler)();
+  EXPECT_TRUE(dynamic_cast<static_handler *>(h_api_v1.get()) != nullptr);
 }
 
 // Test initialization with invalid handler type
@@ -106,14 +111,16 @@ TEST_F(HandlerRegistryTest, SubpathMatching) {
   EXPECT_TRUE(registry_.Init(config_));
 
   // Exact match
-  request_handler *exact_handler = registry_.Match("/static");
+  HandlerFactory *exact_handler = registry_.Match("/static");
   ASSERT_NE(exact_handler, nullptr);
-  EXPECT_TRUE(dynamic_cast<static_handler *>(exact_handler) != nullptr);
+  auto h_exact = (*exact_handler)();
+  EXPECT_TRUE(dynamic_cast<static_handler *>(h_exact.get()) != nullptr);
 
   // Subpath match
-  request_handler *subpath_handler = registry_.Match("/static/images");
+  HandlerFactory *subpath_handler = registry_.Match("/static/images");
   ASSERT_NE(subpath_handler, nullptr);
-  EXPECT_TRUE(dynamic_cast<static_handler *>(subpath_handler) != nullptr);
+  auto h_subpath = (*subpath_handler)();
+  EXPECT_TRUE(dynamic_cast<static_handler *>(h_subpath.get()) != nullptr);
 }
 
 // Test handling of root static handler with specific root directory
@@ -127,10 +134,10 @@ TEST_F(HandlerRegistryTest, RootHandlerWithSpecificDirectory) {
   ASSERT_TRUE(ParseConfig(config_str));
   EXPECT_TRUE(registry_.Init(config_));
 
-  request_handler *root_handler = registry_.Match("/");
+  HandlerFactory *root_handler = registry_.Match("/");
   ASSERT_NE(root_handler, nullptr);
-
-  auto *static_handler_ptr = dynamic_cast<static_handler *>(root_handler);
+  auto h_root_3 = (*root_handler)();
+  auto *static_handler_ptr = dynamic_cast<static_handler *>(h_root_3.get());
   ASSERT_NE(static_handler_ptr, nullptr);
 }
 

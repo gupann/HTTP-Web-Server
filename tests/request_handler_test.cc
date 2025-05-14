@@ -77,44 +77,36 @@ protected:
 TEST_F(StaticHandlerIntegrationTest, ServeExistingTxtFile) {
   // Arrange
   http::request<http::string_body> req = create_request(http::verb::get, "/static/hello.txt");
-  http::response<http::string_body> res;
 
-  // Act
-  static_handler_->handle_request(req, res);
-
+  auto res = static_handler_->handle_request(req);
   // Assert
-  EXPECT_EQ(res.result(), http::status::ok);
-  ASSERT_TRUE(res.has_content_length());
-  EXPECT_EQ(res[http::field::content_type], "text/plain");
-  EXPECT_EQ(res.body(), "Hello Text!");
+  EXPECT_EQ(res->result(), http::status::ok);
+  ASSERT_TRUE(res->has_content_length());
+  EXPECT_EQ((*res)[http::field::content_type], "text/plain");
+  EXPECT_EQ(res->body(), "Hello Text!");
 }
 
 // Test serving a simple HTML file
 TEST_F(StaticHandlerIntegrationTest, ServeExistingHtmlFile) {
   // Arrange
   http::request<http::string_body> req = create_request(http::verb::get, "/static/page.html");
-  http::response<http::string_body> res;
 
-  // Act
-  static_handler_->handle_request(req, res);
-
+  auto res = static_handler_->handle_request(req);
   // Assert
-  EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res[http::field::content_type], "text/html");
-  EXPECT_EQ(res.body(), "<html></html>");
+  EXPECT_EQ(res->result(), http::status::ok);
+  EXPECT_EQ((*res)[http::field::content_type], "text/html");
+  EXPECT_EQ(res->body(), "<html></html>");
 }
 
 // Test requesting a file that doesn't exist
 TEST_F(StaticHandlerIntegrationTest, FileNotFound) {
   // Arrange
   http::request<http::string_body> req = create_request(http::verb::get, "/static/nonexistent.jpg");
-  http::response<http::string_body> res;
 
-  // Act
-  static_handler_->handle_request(req, res);
+  auto res = static_handler_->handle_request(req);
 
   // Assert
-  EXPECT_EQ(res.result(), http::status::not_found);
+  EXPECT_EQ(res->result(), http::status::not_found);
 }
 
 // Test basic path traversal prevention (using '..')
@@ -122,14 +114,12 @@ TEST_F(StaticHandlerIntegrationTest, PathTraversalBlockedSimple) {
   // Arrange: Attempt to access something outside the root via '..'
   http::request<http::string_body> req =
       create_request(http::verb::get, "/static/../some_other_file");
-  http::response<http::string_body> res;
 
-  // Act
-  static_handler_->handle_request(req, res);
+  auto res = static_handler_->handle_request(req);
 
   // Assert: Expect 404 Not Found (or potentially 403 Forbidden)
   // because the path sanitization should reject '..' components.
-  EXPECT_EQ(res.result(), http::status::not_found);
+  EXPECT_EQ(res->result(), http::status::not_found);
 }
 
 // Test URL decoding for filenames with spaces
@@ -137,15 +127,13 @@ TEST_F(StaticHandlerIntegrationTest, ServeFileWithEncodedSpaces) {
   // Arrange: Request uses %20 for spaces
   http::request<http::string_body> req =
       create_request(http::verb::get, "/static/file%20with%20spaces.txt");
-  http::response<http::string_body> res;
 
-  // Act
-  static_handler_->handle_request(req, res);
+  auto res = static_handler_->handle_request(req);
 
   // Assert
-  EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res[http::field::content_type], "text/plain");
-  EXPECT_EQ(res.body(), "Content of file with spaces");
+  EXPECT_EQ(res->result(), http::status::ok);
+  EXPECT_EQ((*res)[http::field::content_type], "text/plain");
+  EXPECT_EQ(res->body(), "Content of file with spaces");
 }
 
 // Test requesting the root of the static path (behavior depends on handler implementation)
@@ -155,12 +143,10 @@ TEST_F(StaticHandlerIntegrationTest, RequestStaticRootWithoutIndex) {
   // Arrange
   http::request<http::string_body> req =
       create_request(http::verb::get, "/static/"); // Request the root
-  http::response<http::string_body> res;
 
-  // Act
-  static_handler_->handle_request(req, res);
+  auto res = static_handler_->handle_request(req);
 
   // Assert: Expect 404 Not Found if no index.html exists and directory listing is off.
   // Adjust assertion based on your handler's intended behavior for directory requests.
-  EXPECT_EQ(res.result(), http::status::not_found);
+  EXPECT_EQ(res->result(), http::status::not_found);
 }

@@ -1,19 +1,27 @@
 #ifndef ECHO_HANDLER_H
 #define ECHO_HANDLER_H
 
-#include "request_handler.h"
+#include <boost/beast.hpp>
+#include <memory>
+#include <string>
+#include "handler_factory.h" // REGISTER_HANDLER
+#include "request_handler.h" // Request / Response aliases
 
 namespace wasd::http {
 
-namespace http = boost::beast::http;
-
-class echo_handler : public request_handler {
+class echo_handler : public RequestHandler {
 public:
-  using request_handler::request_handler;
-  void handle_request(http::request<http::string_body> &req,
-                      http::response<http::string_body> &res) override;
+  echo_handler();
+  // Common‑API ctor: only the serving prefix is captured
+  explicit echo_handler(std::string prefix);
+
+  // Build & return the HTTP response
+  std::unique_ptr<Response> handle_request(const Request &req) override;
+
+private:
+  std::string prefix_;
 };
 
 } // namespace wasd::http
 
-#endif
+#endif // ECHO_HANDLER_H

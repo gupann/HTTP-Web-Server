@@ -22,7 +22,8 @@ public:
   tcp::socket &socket();
   virtual void start();
 
-  const http::response<http::string_body> &response() const { return res_; }
+  // const http::response<http::string_body> &response() const { return res_; }
+  const Response &response() const { return *res_; }
 
 protected:
   // visible to test subclasses via `using`
@@ -34,8 +35,8 @@ private:
   tcp::socket socket_;
 
   boost::beast::flat_buffer buffer_;
-  http::request<http::string_body> req_;
-  http::response<http::string_body> res_;
+  Request req_;                   // alias from request_handler.h
+  std::unique_ptr<Response> res_; // Response = using alias in request_handler.h
 
   std::chrono::steady_clock::time_point start_time_;
 

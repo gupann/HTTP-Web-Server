@@ -1,120 +1,103 @@
 #include "handler_registry.h"
+
 #include <algorithm>
 #include <boost/log/trivial.hpp>
+
 #include "echo_handler.h"
-#include "static_handler.h"
+#include "handler_factory.h" // Instance(), Lookup(), …
+#include "static_handler.h"  // only needed temporarily for argument parsing helpers
 
 using namespace wasd::http;
 
-// Helper: create the correct concrete handler
-static std::unique_ptr<request_handler>
-MakeHandler(const std::string &type, const std::string &prefix, const NginxConfig *child_block) {
-  if (type == "StaticHandler") {
-    // expect: root <dir>;
-    std::string root_dir = "/";
-    if (child_block) {
-      for (const auto &stmt : child_block->statements_) {
-        if (stmt->tokens_.size() == 2 && stmt->tokens_[0] == "root") {
-          root_dir = stmt->tokens_[1];
-        }
-      }
+static bool ParseStaticBlock(const NginxConfig *block, std::string *root_out) {
+  if (!block)
+    return false;
+  for (const auto &stmt : block->statements_) {
+    if (stmt->tokens_.size() == 2 && stmt->tokens_[0] == "root") {
+      *root_out = stmt->tokens_[1];
+      return true;
     }
-    return std::make_unique<static_handler>(prefix, root_dir);
   }
-
-  if (type == "EchoHandler") {
-    return std::make_unique<echo_handler>(prefix, "");
-  }
-
-  BOOST_LOG_TRIVIAL(error) << "Unknown handler type '" << type << "'";
-  return nullptr;
+  return false; // root not found
 }
 
 // ------------------------------------------------------------------
-// HandlerRegistry implementation
+// HandlerRegistry::Init
 // ------------------------------------------------------------------
 bool HandlerRegistry::Init(const NginxConfig &config) {
   for (const auto &stmt : config.statements_) {
-    if (stmt->tokens_.size() < 3)
-      continue; // need at least: location <path> <HandlerName>
-
-    // recognise only blocks that start with the keyword "location"
-    if (stmt->tokens_[0] != "location")
+    if (stmt->tokens_.size() < 3 || stmt->tokens_[0] != "location")
       continue;
 
-    const std::string &prefix = stmt->tokens_[1]; // e.g. /static1
-    const std::string &type = stmt->tokens_[2];   // e.g. StaticHandler
-
-    // Enforce that a child block must exist for handler definitions
+    // Enforce that every 'location ... Handler' has a BLOCK `{ ... }`
     if (!stmt->child_block_) {
-      BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
-                               << "' at location '" << prefix
-                               << "': Missing required '{...}' block.";
-      return false; // Fail initialization
+      BOOST_LOG_TRIVIAL(error) << "Missing block `{}` for handler definition at location "
+                               << stmt->tokens_[1] << " " << stmt->tokens_[2];
+      return false;
     }
+    const std::string &prefix = stmt->tokens_[1]; // "/foo"
+    const std::string &type = stmt->tokens_[2];   // "StaticHandler"
 
-    // DO NOT USE UNTIL CONFIG PARSER HAS BEEN DISCUSSED
-    // // Validate "The presence of quoting around strings (e.g. the serving path) is not
-    // supported." if (prefix.length() >= 2 && ((prefix.front() == '"' && prefix.back() == '"') ||
-    //                              (prefix.front() == '\'' && prefix.back() == '\''))) {
-    //   BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
-    //                            << "' at location " << prefix // Log the token with quotes
-    //                            << ": Serving path must not be enclosed in quotes.";
-    //   return false; // Fail initialization
-    // }
-
-    // Validate that paths must start with '/'
-    if (prefix.empty() || prefix.front() != '/') {
-      BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
-                               << "' at location '" << prefix
-                               << "': Serving path must start with '/'.";
-      return false; // Fail initialization
+    // Basic validation (trailing slash, dupes, etc.) – keep what you already had
+    if (prefix.empty() || prefix[0] != '/') {
+      BOOST_LOG_TRIVIAL(error) << "Path must start with '/': " << prefix;
+      return false;
     }
-
-    // Validate "Trailing slashes on URL serving paths are prohibited."
-    // We allow "/" as a valid root path, but any other path like "/foo/" is invalid.
-    if (prefix.length() > 1 && prefix.back() == '/') {
-      BOOST_LOG_TRIVIAL(error) << "Configuration error for handler type '" << type
-                               << "' at location '" << prefix
-                               << "': Serving path must not have a trailing slash.";
-      return false; // Fail initialization
+    if (prefix.size() > 1 && prefix.back() == '/') {
+      BOOST_LOG_TRIVIAL(error) << "Path must not end with '/': " << prefix;
+      return false;
     }
-
-    // Validate "Duplicate locations in the config should result in the server failing at startup."
-    for (const auto &existing_mapping : mappings_) {
-      if (existing_mapping.prefix == prefix) {
-        BOOST_LOG_TRIVIAL(error)
-            << "Configuration error: Duplicate location prefix '" << prefix
-            << "' defined for handler type '" << type << "'. Previously defined for handler type '"
-            << (existing_mapping.handler
-                    ? "some_handler_type"
-                    : "unknown") // Placeholder, ideally get type from existing handler
-            << "'.";
-        // To get the actual type of the existing handler, you might need to add a way for handlers
-        // to report their type, or store the type string alongside the handler in the Mapping
-        // struct. For now, a generic message is used.
-        return false; // Fail initialization
+    for (const auto &m : mappings_) {
+      if (m.prefix == prefix) {
+        BOOST_LOG_TRIVIAL(error) << "Duplicate location: " << prefix;
+        return false;
       }
     }
 
-    auto h = MakeHandler(type, prefix, stmt->child_block_.get());
-    if (!h)
+    // ----------------------------------------------------------------
+    // Look up factory template for <type>
+    // ----------------------------------------------------------------
+    HandlerFactory *archetype = HandlerFactoryRegistry::Instance().Lookup(type);
+    if (!archetype) {
+      BOOST_LOG_TRIVIAL(error) << "Unknown handler type '" << type << "'";
       return false;
+    }
 
-    mappings_.push_back({prefix, std::move(h)});
+    HandlerFactory bound_factory;
+
+    if (type == "StaticHandler") {
+      std::string root_dir = ".";
+      if (!ParseStaticBlock(stmt->child_block_.get(), &root_dir)) {
+        BOOST_LOG_TRIVIAL(error) << "StaticHandler at " << prefix
+                                 << " missing/invalid root directive";
+        return false;
+      }
+      bound_factory = [prefix, root_dir]() {
+        return std::make_unique<static_handler>(prefix, root_dir);
+      };
+    } else if (type == "EchoHandler") {
+      bound_factory = [prefix]() { return std::make_unique<echo_handler>(prefix); };
+    } else {
+      // Generic fallback: zero-arg constructor via REGISTER_HANDLER
+      bound_factory = *archetype;
+    }
+    mappings_.push_back({prefix, std::move(bound_factory)});
   }
 
-  // longest-prefix match → sort by descending prefix length
+  // sort longest‑prefix first
   std::sort(mappings_.begin(), mappings_.end(),
             [](const Mapping &a, const Mapping &b) { return a.prefix.size() > b.prefix.size(); });
-
   return true;
 }
 
-request_handler *HandlerRegistry::Match(const std::string &uri) const {
+// ------------------------------------------------------------------
+// HandlerRegistry::Match
+// ------------------------------------------------------------------
+HandlerFactory *HandlerRegistry::Match(const std::string &uri) const {
   for (const auto &m : mappings_) {
-    if (uri.rfind(m.prefix, 0) == 0) // prefix at pos 0
-      return m.handler.get();
+    if (uri.rfind(m.prefix, 0) == 0) { // prefix match at pos 0
+      return const_cast<HandlerFactory *>(&m.factory);
+    }
   }
   return nullptr;
 }

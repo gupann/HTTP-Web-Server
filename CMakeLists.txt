@@ -39,14 +39,15 @@ add_library(logger src/logger.cc)
 target_link_libraries(logger PUBLIC Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
 
 # Make library for request handlers
-add_library(request_handler_lib src/request_handler.cc src/echo_handler.cc src/static_handler.cc src/handler_registry.cc)
+add_library(request_handler_lib src/echo_handler.cc src/static_handler.cc src/handler_registry.cc src/handler_factory.cc)
+target_link_libraries(request_handler_lib PUBLIC logger)
 
 # Compile config_parser into a library
 add_library(config_parser src/config_parser.cc)
 target_link_libraries(config_parser PUBLIC Boost::regex Boost::log_setup Boost::log)
 
 # Compile core webserver logic (server, session) into a library
-add_library(webserver_lib src/server.cc src/session.cc src/handler_registry.cc)
+add_library(webserver_lib src/server.cc src/session.cc)
 target_link_libraries(webserver_lib PUBLIC request_handler_lib logger)
 
 # Build the main webserver executable
