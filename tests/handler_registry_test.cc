@@ -2,6 +2,7 @@
 #include "echo_handler.h"
 #include "gtest/gtest.h"
 #include "handler_registry.h"
+#include "not_found_handler.h"
 #include "static_handler.h"
 
 using namespace wasd::http;
@@ -50,9 +51,12 @@ TEST_F(HandlerRegistryTest, InitWithNoHandlers) {
   ASSERT_TRUE(ParseConfig(config_str));
   EXPECT_TRUE(registry_.Init(config_));
 
-  // No handlers should be registered
-  EXPECT_EQ(registry_.Match("/"), nullptr);
-  EXPECT_EQ(registry_.Match("/echo"), nullptr);
+  // Match for "/" should return the default not_found_handler factory
+  HandlerFactory *factory = registry_.Match("/");
+  ASSERT_NE(factory, nullptr);
+  auto handler_instance = (*factory)(); // Invoke factory to get handler
+  ASSERT_NE(handler_instance, nullptr);
+  EXPECT_TRUE(dynamic_cast<not_found_handler *>(handler_instance.get()) != nullptr);
 }
 
 // Test matching with longest prefix
@@ -141,8 +145,8 @@ TEST_F(HandlerRegistryTest, RootHandlerWithSpecificDirectory) {
   ASSERT_NE(static_handler_ptr, nullptr);
 }
 
-// Test no match returns nullptr
-TEST_F(HandlerRegistryTest, NoMatchReturnsNullptr) {
+// Test no match returns the not_found_handler
+TEST_F(HandlerRegistryTest, NoMatchReturnsNotFoundHandler) {
   std::string config_str = R"(
         location /api EchoHandler {}
     )";
@@ -150,7 +154,11 @@ TEST_F(HandlerRegistryTest, NoMatchReturnsNullptr) {
   ASSERT_TRUE(ParseConfig(config_str));
   EXPECT_TRUE(registry_.Init(config_));
 
-  EXPECT_EQ(registry_.Match("/nonexistent"), nullptr);
+  HandlerFactory *factory = registry_.Match("/nonexistent");
+  ASSERT_NE(factory, nullptr);
+  auto handler_instance = (*factory)(); // Invoke factory to get handler
+  ASSERT_NE(handler_instance, nullptr);
+  EXPECT_TRUE(dynamic_cast<not_found_handler *>(handler_instance.get()) != nullptr);
 }
 
 TEST_F(HandlerRegistryTest, HandlerDefinitionRequiresBlock) {

@@ -4,8 +4,9 @@
 #include <boost/log/trivial.hpp>
 
 #include "echo_handler.h"
-#include "handler_factory.h" // Instance(), Lookup(), …
-#include "static_handler.h"  // only needed temporarily for argument parsing helpers
+#include "handler_factory.h"   // Instance(), Lookup(), …
+#include "not_found_handler.h" // Include for std::make_unique<not_found_handler>
+#include "static_handler.h"    // only needed temporarily for argument parsing helpers
 
 using namespace wasd::http;
 
@@ -25,6 +26,9 @@ static bool ParseStaticBlock(const NginxConfig *block, std::string *root_out) {
 // HandlerRegistry::Init
 // ------------------------------------------------------------------
 bool HandlerRegistry::Init(const NginxConfig &config) {
+  // Initialize not found handler factory
+  not_found_factory_ = []() { return std::make_unique<not_found_handler>(); };
+
   for (const auto &stmt : config.statements_) {
     if (stmt->tokens_.size() < 3 || stmt->tokens_[0] != "location")
       continue;
@@ -99,5 +103,6 @@ HandlerFactory *HandlerRegistry::Match(const std::string &uri) const {
       return const_cast<HandlerFactory *>(&m.factory);
     }
   }
-  return nullptr;
+  // Return the factory for not_found_handler
+  return const_cast<HandlerFactory *>(&not_found_factory_);
 }

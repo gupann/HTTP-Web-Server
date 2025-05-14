@@ -42,19 +42,15 @@ void session::handle_read(const boost::system::error_code &error,
     return;
   }
 
-  // 1) Try to match the URI; 2) if none, fall back to echo
+  // 1) Attempts to match the URI against our config -- returns 404 handler if no match found
   HandlerFactory *fac = registry_->Match(std::string(req_.target()));
   std::unique_ptr<RequestHandler> handler;
-  if (fac) {
-    handler = (*fac)();
-  } else {
-    handler = std::make_unique<echo_handler>(std::string());
-  }
+  handler = (*fac)();
 
-  // 3) Generate the response
+  // 2) Generate the response
   res_ = handler->handle_request(req_);
 
-  // 4) Send it
+  // 3) Send it
   http::async_write(socket_, *res_, [this](const boost::system::error_code &ec, std::size_t bytes) {
     handle_write(ec, bytes);
   });

@@ -23,6 +23,7 @@ private:
     HandlerFactory factory; // lambda that builds the handler
   };
   std::vector<Mapping> mappings_; // sorted longest‑>shortest
+  HandlerFactory not_found_factory_;
 };
 
 } // namespace wasd::http

@@ -65,10 +65,10 @@ trap teardown_server EXIT INT TERM
 # test cases
 
 # normal working case: server should echo request line in body
-test_valid_request() {
+test_echo_request() {
     local body
-    body=$(curl -s -S "http://localhost:$PORT/" -H "Connection: close")
-    grep -qE "^GET / HTTP/1\.[01]" <<<"$body" # body should match the valid response form
+    body=$(curl -s -S "http://localhost:$PORT/echo/" -H "Connection: close")
+    grep -qE "^GET /echo/ HTTP/1\.[01]" <<<"$body" # body should match the valid response form
 }
 
 # malformed request via nc should not yield an HTTP status line
@@ -100,14 +100,6 @@ test_echo_handler() {
     grep -q "X-Test: yes" <<<"$body"
 }
 
-# fallback echo (any unmapped path)
-test_fallback_echo() {
-    local body
-    body=$(curl -s "http://localhost:$PORT/otherpath" -H "X-Fallback: ok")
-    grep -qE "^GET /otherpath HTTP/1\.[01]" <<<"$body"
-    grep -q "X-Fallback: ok" <<<"$body"
-}
-
 # static file returns correct Content-Type
 test_static_content_type() {
     local ct
@@ -115,16 +107,23 @@ test_static_content_type() {
     [ "$ct" = "text/html" ]
 }
 
+# non-static handler returns 404
+test_404_handler() {
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT/notfound")
+    [ "$code" -eq 404 ]
+}
+
 # register tests
 
 TESTS=(
-  test_valid_request
+  test_echo_request
   test_invalid_request
   test_static_file
   test_static_404
   test_echo_handler
-  test_fallback_echo
   test_static_content_type
+  test_404_handler
 )
 
 # main

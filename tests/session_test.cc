@@ -2,6 +2,8 @@
 #include <boost/beast/http.hpp>
 #include <sstream>
 #include <string>
+#include "config_parser.h"
+#include "echo_handler.h"
 #include "gtest/gtest.h"
 #include "handler_registry.h"
 #include "session.h"
@@ -26,6 +28,24 @@ protected:
 
   // use TestableSession so we can reach hooks without changing API
   TestableSession *test_session_ = new TestableSession{io_service_, registry_};
+  NginxConfigParser parser_;
+  NginxConfig config_;
+
+  // Helper method to create a config from a string
+  bool ParseConfig(const std::string &config_str) {
+    std::stringstream ss(config_str);
+    return parser_.Parse(&ss, &config_);
+  }
+
+  void SetUp() override {
+    std::string config_str = R"(
+    port 80;
+    location /echo EchoHandler {};
+    )";
+
+    ParseConfig(config_str);
+    registry_->Init(config_);
+  }
 
   void SimulateHandleRead(http::request<http::string_body> request,
                           const boost::system::error_code &ec = {},
@@ -42,12 +62,12 @@ protected:
   }
 };
 
-// Test case for handling a simple GET request
-TEST_F(SessionTest, HandleSimpleGET) {
+// Test case for handling a simple echo request
+TEST_F(SessionTest, HandleEcho) {
   // 1. Prepare a simple GET request
   http::request<http::string_body> req;
   req.method(http::verb::get);
-  req.target("/");
+  req.target("/echo");
   req.version(11); // HTTP/1.1
   req.set(http::field::host, "localhost");
   req.prepare_payload(); // Important for generating the string representation
@@ -78,28 +98,6 @@ TEST_F(SessionTest, HandleReadError) {
   // We expect the session to delete itself in this case, so we can't check state after.
   boost::system::error_code ec = boost::asio::error::connection_reset;
   EXPECT_NO_THROW(test_session_->handle_read(ec, 0));
-}
-
-// Test case for handling a GET request with a specific path
-TEST_F(SessionTest, HandleGETWithPath) {
-  // 1. Prepare a GET request with a path
-  http::request<http::string_body> req;
-  req.method(http::verb::get);
-  req.target("/echo");
-  req.version(11);
-  req.set(http::field::host, "example.com");
-  req.prepare_payload();
-
-  std::string expected_echo_body = request_to_string(req);
-
-  // 2. Simulate handle_read
-  SimulateHandleRead(req);
-
-  // 3. Check the response
-  const auto &res = test_session_->response();
-  EXPECT_EQ(res.result(), http::status::ok);
-  EXPECT_EQ(res[http::field::content_type], "text/plain");
-  EXPECT_EQ(res.body(), expected_echo_body);
 }
 
 // Test case for handling a POST request with a body

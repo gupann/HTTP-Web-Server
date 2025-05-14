@@ -39,7 +39,7 @@ add_library(logger src/logger.cc)
 target_link_libraries(logger PUBLIC Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
 
 # Make library for request handlers
-add_library(request_handler_lib src/echo_handler.cc src/static_handler.cc src/handler_registry.cc src/handler_factory.cc)
+add_library(request_handler_lib src/handler_registry.cc src/handler_factory.cc src/echo_handler.cc src/static_handler.cc src/not_found_handler.cc)
 target_link_libraries(request_handler_lib PUBLIC logger)
 
 # Compile config_parser into a library
@@ -60,7 +60,7 @@ target_link_libraries(config_parser_test config_parser gtest_main)
 gtest_discover_tests(config_parser_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
 # Define webserver unit test executable, link its libraries, and discover its tests
-add_executable(session_test tests/session_test.cc)
+add_executable(session_test tests/session_test.cc src/config_parser.cc)
 target_link_libraries(session_test webserver_lib logger gtest_main)
 gtest_discover_tests(session_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
