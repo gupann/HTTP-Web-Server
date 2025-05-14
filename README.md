@@ -1,38 +1,39 @@
 # Contributing to the WASD-Gamers Web Server
 
-Welcome, contributor\! This document will guide you through the process of understanding our codebase, building and testing it, and most importantly, adding new request handlers. Our server adheres to the CS130 Common API standard.
+Welcome! This document will guide you through the process of understanding our codebase, building and testing it, and most importantly, adding new request handlers. Our server adheres to the CS 130 Common API standard.
 
 ## Table of Contents
 
 1.  [Source Code Layout](#source-code-layout)
 2.  [Build, Test, and Run](#build-test-and-run)
 3.  [Adding a New Request Handler](#adding-a-new-request-handler)
-      * [Overview](#overview)
-      * [Step 1: Define Your Handler Class](#step-1-define-your-handler-class)
-      * [Step 2: Implement the RequestHandler Interface](#step-2-implement-the-requesthandler-interface)
-      * [Step 3: Register Your Handler with the Factory System](#step-3-register-your-handler-with-the-factory-system)
-      * [Step 4: Configure Your Handler](#step-4-configure-your-handler)
-      * [Step 5: Build and Test](#step-5-build-and-test)
-4.  [Core Interfaces (Well-Documented Headers)](#core-interfaces-well-documented-headers)
-      * [RequestHandler Interface](#requesthandler-interface-common-api)
-      * [Example: EchoHandler (Illustrative)](#example-echohandler-illustrative)
+    - [Overview](#overview)
+    - [Step 1: Define Your Handler Class](#step-1-define-your-handler-class)
+    - [Step 2: Implement the RequestHandler Interface](#step-2-implement-the-requesthandler-interface)
+    - [Step 3: Hook Your Handler into `MakeHandler`](#step-3-hook-your-handler-into-makehandler)
+    - [Step 4: Configure Your Handler](#step-4-configure-your-handler)
+    - [Step 5: Build and Test](#step-5-build-and-test)
+4.  [Core Interfaces](#core-interfaces)
+    - [RequestHandler Interface](#requesthandler-interface-common-api)
+    - [Example: EchoHandler (Illustrative)](#example-echohandler-illustrative)
 
 ## Source Code Layout
 
 Our project follows a standard C++ project structure:
 
-  * `configs/`: Contains example configuration files for the server.
-  * `include/wasd/http/`: Public header files for our HTTP components, including `request_handler.h`, `echo_handler.h`, `static_handler.h`, etc. All server-specific HTTP symbols are within the `wasd::http` namespace.
-  * `src/`: Source code (`.cc`) files for implementation of classes and functions.
-      * `webserver_main.cc`: Main entry point for the server.
-      * `config_parser.cc`: Implements Nginx-style configuration parsing.
-      * `server.cc`: Core server logic for listening and accepting connections.
-      * `session.cc`: Manages individual client connections.
-      * `handler_registry.cc`: Manages handler factories and dispatches requests.
-      * `echo_handler.cc`, `static_handler.cc`, etc.: Implementations of concrete request handlers.
-  * `build/`: This directory is created by you for CMake build files. It's typically added to `.gitignore`.
-  * `tests/`: Contains unit tests and potentially integration test scripts.
-  * `lib/`: May contain third-party libraries if not handled by system package managers or CMake.
+- `include/`: Public header files for our HTTP components, including `request_handler.h`, `echo_handler.h`, `static_handler.h`, etc. All server-specific HTTP symbols are within the `wasd::http` namespace.
+- `src/`: Source code (`.cc`) files for implementation of classes and functions.
+  - `webserver_main.cc`: Main entry point for the server.
+  - `config_parser.cc`: Implements Nginx-style configuration parsing.
+  - `server.cc`: Core server logic for listening and accepting connections.
+  - `session.cc`: Manages individual client connections.
+  - `handler_registry.cc`: Manages handler factories and dispatches requests.
+  - `echo_handler.cc`, `static_handler.cc`, etc.: Implementations of concrete request handlers.
+- `build/`: This directory is created by you for CMake build files. It's typically added to `.gitignore`.
+- `tests/`: Contains unit tests and potentially integration test scripts.
+- `static/`: Files and sub-folders served by `StaticHandler`.
+- `docker/`: Dockerfiles and CI configuration.
+- `logs/`: Runtime log output (rotated by date).
 
 ## Build, Test, and Run
 
@@ -47,21 +48,19 @@ mkdir -p build
 cd build
 cmake ..
 make
-# To build tests (if tests are a separate target or enabled by a CMake option)
-# make tests
 ```
 
 The main server executable will typically be found in `build/bin/webserver`.
 
 **2. Test:**
-Unit tests can be run using CTest after building:
+After building:
 
 ```bash
 # From the 'build' directory
-ctest
+make test
 ```
 
-Refer to integration test scripts (e.g., `tests/integration_test.sh`) for end-to-end testing.
+The above command runs all tests, including the integation tests at `tests/integration_test.sh`.
 
 **3. Run:**
 To run the web server, you need to provide a configuration file:
@@ -71,7 +70,7 @@ To run the web server, you need to provide a configuration file:
 ./bin/webserver ../my_config
 ```
 
-Replace `my_config` with the name of your configuration file.
+where `my_config` is the config file (there is already one with this name).
 
 ## Adding a New Request Handler
 
@@ -81,15 +80,17 @@ Adding a new request handler involves defining its behavior, integrating it with
 
 1.  **Define** your new handler class, inheriting from `wasd::http::request_handler`.
 2.  **Implement** the constructor (which will receive its parameters from `MakeHandler`) and the `void handle_request(http::request<http::string_body>& req, http::response<http::string_body>& res)` method.
-3.  **Modify** the `MakeHandler` function in `src/handler_registry.cc` to instantiate your new handler based on the configuration.
+3.  **Modify**
+    - `src/handler_registry.cc` – add a new `if (type == "MyNewHandler") { … }` branch.
+    - `CMakeLists.txt` – append `src/my_new_handler.cc` to the `add_library(request_handler_lib …)` source list so the new file is compiled.
 4.  **Add** a `location` block to a configuration file to map a URL prefix to your new handler.
 5.  **Rebuild** and **test** your new handler thoroughly.
 
 ### Step 1: Define Your Handler Class
 
-Create a header file (e.g., `include/wasd/http/my_new_handler.h`) and a source file (e.g., `src/my_new_handler.cc`) for your new handler.
+Create a header file (e.g., `include/my_new_handler.h`) and a source file (e.g., `src/my_new_handler.cc`) for your new handler.
 
-**`include/wasd/http/my_new_handler.h` (Example Skeleton):**
+**`include/my_new_handler.h` (Example Skeleton):**
 
 ```c++
 #ifndef MY_NEW_HANDLER_H
@@ -98,7 +99,7 @@ Create a header file (e.g., `include/wasd/http/my_new_handler.h`) and a source f
 #include "request_handler.h" // Base class interface
 #include <string>
 
-using namespace wasd::http;
+namespace wasd::http {
 
 namespace http = boost::beast::http;
 
@@ -117,7 +118,9 @@ public:
 private:
     // Store any configuration passed via constructor
     std::string specific_config_value_;
-}; // namespace wasd::http
+};
+
+}  // namespace wasd::http
 
 #endif // MY_NEW_HANDLER_H
 ```
@@ -163,14 +166,15 @@ void MyNewHandler::handle_request(http::request<http::string_body>& req,
 
 **`handle_request` Method:**
 
-  * This is the core of your handler.
-  * It receives `http::request<http::string_body>& req` and `http::response<http::string_body>& res`.
-  * It **must populate** the `res` object with the correct status code, headers (e.g., `Content-Type`), and body.
-  * It returns `void`.
+- This is the core of your handler.
+- It receives `http::request<http::string_body>& req` and `http::response<http::string_body>& res`.
+- It **must populate** the `res` object with the correct status code, headers (e.g., `Content-Type`), and body.
+- It returns `void`.
 
-### Step 3: Register Your Handler with the Factory System
+### Step 3: Hook Your Handler into `MakeHandler`
 
-For the server to be able to create your handler, you need to add its instantiation logic to the `MakeHandler` function in `src/handler_registry.cc`.
+The server creates handlers through the `MakeHandler` factory inside `src/handler_registry.cc`.  
+Add a new `if (type == "MyNewHandler") { … }` branch there.
 
 ```c++
 // In src/handler_registry.cc
@@ -216,6 +220,8 @@ MakeHandler(const std::string &type, const std::string &prefix, const NginxConfi
 }
 ```
 
+Also, append `src/my_new_handler.cc` to the `add_library(request_handler_lib …)` source list so the new file is compiled.
+
 ### Step 4: Configure Your Handler
 
 Add a `location` block to your server configuration file (e.g., `configs/my_config`) to tell the server when to use your new handler:
@@ -230,9 +236,9 @@ location /my_feature MyNewHandlerNameInConfig {
 }
 ```
 
-  * Replace `/my_feature` with the URL prefix you want this handler to manage.
-  * Replace `MyNewHandlerNameInConfig` with the string name your `MakeHandler` function recognizes for your new handler (e.g., "MyNewHandlerNameInConfig" from the example above).
-  * Any directives inside the `{...}` block will be available in `child_block` for `MakeHandler` to parse.
+- Replace `/my_feature` with the URL prefix you want this handler to manage.
+- Replace `MyNewHandlerNameInConfig` with the string name your `MakeHandler` function recognizes for your new handler (e.g., "MyNewHandlerNameInConfig" from the example above).
+- Any directives inside the `{...}` block will be available in `child_block` for `MakeHandler` to parse.
 
 ### Step 5: Build and Test
 
@@ -244,16 +250,16 @@ location /my_feature MyNewHandlerNameInConfig {
 2.  Run the server with the updated configuration.
 3.  Test your new handler thoroughly using tools like `curl` or by writing new unit/integration tests.
 
-## Core Interfaces (Well-Documented Headers)
+## Core Interfaces
 
 ### RequestHandler Interface (Common API)
 
 This is the central interface all request handlers must adhere to. It ensures that the server can treat all handlers polymorphically.
 
-**`include/wasd/http/request_handler.h` (Actual Interface):**
+**`include/request_handler.h` (Actual Interface):**
 
 ```c++
-// filepath: /home/williamsmith/cs130/wasd-gamers/include/request_handler.h
+// include/request_handler.h
 #ifndef REQUEST_HANDLER_H
 #define REQUEST_HANDLER_H
 
@@ -284,19 +290,19 @@ private:
 #endif
 ```
 
-  * **`request_handler(const std::string &location, const std::string &root)`**: The constructor for the base handler. Derived handlers must call this or provide their own constructor that initializes the necessary state. `location` is the matched URL prefix, and `root` is a generic parameter often used for a root directory (e.g., by `StaticHandler`).
-  * **`virtual void handle_request(http::request<http::string_body> &req, http::response<http::string_body> &res) = 0`**: This is the primary method a contributor needs to implement. It receives references to Boost.Beast request and response objects (or your typedefs). The handler is responsible for populating the `res` object.
-  * **`get_prefix()` and `get_dir()`**: Utility methods to access the location prefix and root directory configured for this handler instance.
-  * **Configuration**: Handlers receive their configuration (like `prefix_` and `dir_`) via their constructor, typically populated by the `MakeHandler` function in `handler_registry.cc` which parses the Nginx-style configuration block.
+- **`request_handler(const std::string &location, const std::string &root)`**: The constructor for the base handler. Derived handlers must call this or provide their own constructor that initializes the necessary state. `location` is the matched URL prefix, and `root` is a generic parameter often used for a root directory (e.g., by `StaticHandler`).
+- **`virtual void handle_request(http::request<http::string_body> &req, http::response<http::string_body> &res) = 0`**: This is the primary method a contributor needs to implement. It receives references to Boost.Beast request and response objects (or your typedefs). The handler is responsible for populating the `res` object.
+- **`get_prefix()` and `get_dir()`**: Utility methods to access the location prefix and root directory configured for this handler instance.
+- **Configuration**: Handlers receive their configuration (like `prefix_` and `dir_`) via their constructor, typically populated by the `MakeHandler` function in `handler_registry.cc` which parses the Nginx-style configuration block.
 
 ### Example: `EchoHandler` (Illustrative)
 
 The `EchoHandler` is a simple handler that reflects the incoming request back to the client.
 
-**`include/wasd/http/echo_handler.h` (Actual Interface):**
+**`include/echo_handler.h` (Actual Interface):**
 
 ```c++
-// filepath: /home/williamsmith/cs130/wasd-gamers/include/echo_handler.h
+// include/echo_handler.h
 #ifndef ECHO_HANDLER_H
 #define ECHO_HANDLER_H
 
@@ -321,7 +327,7 @@ public:
 **`src/echo_handler.cc` (Actual Implementation):**
 
 ```c++
-// filepath: /home/williamsmith/cs130/wasd-gamers/src/echo_handler.cc
+// src/echo_handler.cc
 #include "echo_handler.h"
 #include <sstream> // For serializing the request
 
@@ -340,4 +346,55 @@ void echo_handler::handle_request(http::request<http::string_body> &req,
   res.body() = oss.str();
   res.prepare_payload(); // Important for setting Content-Length etc.
 }
+```
+
+## Code Style & Formatting
+
+We follow the `.clang-format` file in the repo (root) — K&R braces, 2-space indents, 100-col limit.
+
+### Install the tools (if you don't already have them)
+
+```
+sudo apt update
+sudo apt install clang-format clang-tidy
+```
+
+### VS Code users
+
+Add these two lines to **settings.json** so the editor picks up the project style automatically & formats on save:
+
+```jsonc
+"C_Cpp.clang_format_style": "file",
+"editor.formatOnSave": true
+```
+
+### Auto-format on every commit
+
+Create .git/hooks/pre-commit with the script below (make it executable):
+
+```bash
+#!/usr/bin/env bash
+
+# 1. Guard: make sure clang-format is available
+command -v clang-format >/dev/null 2>&1 || {
+  echo >&2 "clang-format not found – install LLVM tools or skip commit.";
+  exit 1
+}
+
+# 2. Find staged C/C++ files
+STAGED_FILES=$(git diff --cached --name-only -- '*.h' '*.cc')
+[[ -z "$STAGED_FILES" ]] && exit 0
+
+# 3. Run clang-format on them
+echo "⧗ running clang-format on staged files…"
+clang-format -i --style=file $STAGED_FILES
+git add $STAGED_FILES
+
+exit 0
+```
+
+**Or, if you don't want to do all that, just run this before you commit (formatting libs still required):**
+
+```bash
+cmake --build build --target clang_format
 ```
