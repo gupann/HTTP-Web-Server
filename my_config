@@ -1,7 +1,23 @@
+# the root path returns 404 as expected because the NotFoundHandler is called by default
+
 port 80;
 
-location / StaticHandler {
-  root ./static;
+location /main StaticHandler {
+  root ./static/site;
 }
 
-location /echo EchoHandler {}
+location /img StaticHandler {
+  root ./static/site/images;
+}
+
+location /debug EchoHandler {}
+
+location /api EchoHandler {}
+
+location /api/v1 StaticHandler {
+  root ./static/api/v1;
+}
+
+location /admin StaticHandler {
+  root ./static/admin;
+}
