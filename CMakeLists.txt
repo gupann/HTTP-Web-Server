@@ -39,7 +39,7 @@ add_library(logger src/logger.cc)
 target_link_libraries(logger PUBLIC Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
 
 # Make library for request handlers
-add_library(request_handler_lib src/handler_registry.cc src/handler_factory.cc src/echo_handler.cc src/static_handler.cc src/not_found_handler.cc)
+add_library(request_handler_lib src/handler_registry.cc src/handler_factory.cc src/echo_handler.cc src/static_handler.cc src/not_found_handler.cc src/crud_handler.cc)
 target_link_libraries(request_handler_lib PUBLIC logger)
 
 # Compile config_parser into a library
