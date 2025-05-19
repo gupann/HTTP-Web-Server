@@ -1,10 +1,11 @@
 #include "crud_handler.h"
 #include <filesystem>
 #include <fstream>
+#include "handler_factory.h"
 
 using namespace wasd::http;
-namespace fs = std::filesystem;
 namespace http = boost::beast::http;
+namespace fs = std::filesystem;
 
 // RealFileSystem implementation
 bool RealFileSystem::file_exists(const std::string &path) const {
@@ -59,17 +60,34 @@ std::vector<std::string> RealFileSystem::list_directory(const std::string &path)
   return files;
 }
 
-// CrudRequestHandler implementation
-CrudRequestHandler::CrudRequestHandler(const std::string &data_path,
+CrudRequestHandler::CrudRequestHandler()
+    : prefix_("/api"), data_path_("./data"), fs_(std::make_shared<RealFileSystem>()) {
+  fs_->create_directory(data_path_);
+}
+
+CrudRequestHandler::CrudRequestHandler(const std::string &prefix, const std::string &data_path,
                                        std::shared_ptr<FileSystemInterface> fs)
-    : data_path_(data_path), fs_(std::move(fs)) {
+    : prefix_(prefix), data_path_(data_path), fs_(std::move(fs)) {
   // Create the root data directory if it doesn't exist
   fs_->create_directory(data_path_);
 }
 
 std::unique_ptr<Response> CrudRequestHandler::handle_request(const Request &req) {
   std::string path(req.target());
-  auto [entity_type, id] = parse_path(path);
+
+  // Check if the request path starts with our prefix
+  if (path.rfind(prefix_, 0) != 0) {
+    // Path doesn't start with our prefix - return 404
+    auto res = std::make_unique<Response>(http::status::not_found, req.version());
+    res->set(http::field::content_type, "application/json");
+    res->body() = "{\"error\": \"Not found\"}";
+    res->prepare_payload();
+    return res;
+  }
+
+  // Remove prefix from path before parsing
+  std::string relative_path = path.substr(prefix_.size());
+  auto [entity_type, id] = parse_path(relative_path);
 
   if (entity_type.empty()) {
     // Invalid request path
@@ -127,13 +145,63 @@ std::unique_ptr<Response> CrudRequestHandler::handle_post(const Request &req,
 std::unique_ptr<Response> CrudRequestHandler::handle_get(const Request &req,
                                                          const std::string &entity_type,
                                                          const std::optional<std::string> &id) {
-  // TODO: Implement GET functionality
-  // If ID is present:
-  //   1. Check if the entity exists
-  //   2. Return the entity data if found
-  // If ID is not present:
-  //   1. List all entity IDs of the given type
-  return std::make_unique<Response>(http::status::not_implemented, req.version());
+  // Create a response with the same HTTP version as the request
+  auto res = std::make_unique<Response>(http::status::ok, req.version());
+  res->set(http::field::content_type, "application/json");
+
+  // Create directory path for the entity type
+  std::string entity_dir = data_path_ + "/" + entity_type;
+
+  // Case 1: Request for a specific entity by ID
+  if (id.has_value()) {
+    std::string entity_path = entity_dir + "/" + id.value();
+
+    // Check if the entity file exists
+    if (!fs_->file_exists(entity_path)) {
+      // Entity not found
+      res->result(http::status::not_found);
+      res->body() = "{\"error\": \"Entity not found\"}";
+      res->prepare_payload();
+      return res;
+    }
+
+    // Read the entity data
+    auto data = fs_->read_file(entity_path);
+    if (!data.has_value()) {
+      // File exists but couldn't be read
+      res->result(http::status::internal_server_error);
+      res->body() = "{\"error\": \"Failed to read entity data\"}";
+      res->prepare_payload();
+      return res;
+    }
+
+    // Return the entity data
+    res->body() = data.value();
+    res->prepare_payload();
+    return res;
+  }
+
+  // Case 2: Request to list all entity IDs
+  // Build a JSON array of IDs
+  std::string json_array = "[";
+  if (fs_->file_exists(entity_dir)) {
+    // Get list of files in the entity directory
+    std::vector<std::string> files = fs_->list_directory(entity_dir);
+    std::sort(files.begin(), files.end());
+
+    for (size_t i = 0; i < files.size(); ++i) {
+      json_array += "\"" + files[i] + "\"";
+      if (i < files.size() - 1) {
+        json_array += ", ";
+      }
+    }
+  }
+  json_array += "]";
+
+  // Return the list of IDs
+  res->body() = json_array;
+  res->prepare_payload();
+  return res;
 }
 
 std::unique_ptr<Response> CrudRequestHandler::handle_put(const Request &req,
@@ -157,11 +225,41 @@ std::unique_ptr<Response> CrudRequestHandler::handle_delete(const Request &req,
 
 std::pair<std::string, std::optional<std::string>>
 CrudRequestHandler::parse_path(const std::string &path) {
-  // TODO: Implement path parsing
-  // Extract entity type and optional ID from the path
-  // Example: "/Shoes/1" -> {"Shoes", "1"}
-  //          "/Shoes"   -> {"Shoes", std::nullopt}
-  return {"", std::nullopt}; // Placeholder
+  // Skip the leading slash if present
+  size_t start_pos = (path[0] == '/') ? 1 : 0;
+
+  // If path is empty or only has a slash, return empty result
+  if (start_pos >= path.length()) {
+    return {"", std::nullopt};
+  }
+
+  // Find the next slash after the entity type
+  size_t id_separator = path.find('/', start_pos);
+
+  // Extract entity type
+  std::string entity_type;
+  if (id_separator == std::string::npos) {
+    entity_type = path.substr(start_pos);
+  } else {
+    entity_type = path.substr(start_pos, id_separator - start_pos);
+  }
+
+  // If entity_type is empty, return empty result
+  if (entity_type.empty()) {
+    return {"", std::nullopt};
+  }
+
+  // If we found a slash and there's content after it, extract the ID
+  if (id_separator != std::string::npos && id_separator + 1 < path.length()) {
+    // Check if there are more slashes (invalid format)
+    if (path.find('/', id_separator + 1) != std::string::npos) {
+      return {"", std::nullopt}; // Invalid path format (too many segments)
+    }
+    return {entity_type, path.substr(id_separator + 1)};
+  }
+
+  // No ID component
+  return {entity_type, std::nullopt};
 }
 
 std::string CrudRequestHandler::generate_id(const std::string &entity_type) {
@@ -175,4 +273,4 @@ bool CrudRequestHandler::is_valid_json(const std::string &json_str) {
   return true; // Placeholder
 }
 
-// REGISTER_HANDLER("CrudHandler", CrudRequestHandler)
+REGISTER_HANDLER("CrudHandler", CrudRequestHandler)

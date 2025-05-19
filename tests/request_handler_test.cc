@@ -1,3 +1,4 @@
+#include "crud_handler.h"
 #include "echo_handler.h"
 #include "gtest/gtest.h"
 #include "not_found_handler.h"
@@ -225,4 +226,199 @@ TEST_F(NotFoundHandlerTest, Returns404) {
   ASSERT_TRUE(res->has_content_length());
   EXPECT_EQ((*res)[http::field::content_type], "text/plain");
   EXPECT_EQ(res->body(), "404 Not Found");
+}
+
+// Mock filesystem for testing
+class MockFileSystem : public FileSystemInterface {
+public:
+  // Mock storage for our "files"
+  std::unordered_map<std::string, std::string> mock_files;
+  std::unordered_map<std::string, std::vector<std::string>> mock_directories;
+
+  bool file_exists(const std::string &path) const override {
+    return mock_files.find(path) != mock_files.end() ||
+           mock_directories.find(path) != mock_directories.end();
+  }
+
+  std::optional<std::string> read_file(const std::string &path) const override {
+    auto it = mock_files.find(path);
+    if (it != mock_files.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool write_file(const std::string &path, const std::string &content) override {
+    mock_files[path] = content;
+
+    // Extract directory from path
+    size_t last_slash = path.find_last_of('/');
+    if (last_slash != std::string::npos) {
+      std::string dir = path.substr(0, last_slash);
+      std::string filename = path.substr(last_slash + 1);
+
+      // Ensure directory exists in our mock
+      if (mock_directories.find(dir) == mock_directories.end()) {
+        mock_directories[dir] = std::vector<std::string>();
+      }
+
+      // Add filename to directory if not already there
+      auto &files = mock_directories[dir];
+      if (std::find(files.begin(), files.end(), filename) == files.end()) {
+        files.push_back(filename);
+      }
+    }
+
+    return true;
+  }
+
+  bool delete_file(const std::string &path) override {
+    auto it = mock_files.find(path);
+    if (it != mock_files.end()) {
+      mock_files.erase(it);
+
+      // Remove from directory listing too
+      size_t last_slash = path.find_last_of('/');
+      if (last_slash != std::string::npos) {
+        std::string dir = path.substr(0, last_slash);
+        std::string filename = path.substr(last_slash + 1);
+
+        auto dir_it = mock_directories.find(dir);
+        if (dir_it != mock_directories.end()) {
+          auto &files = dir_it->second;
+          files.erase(std::remove(files.begin(), files.end(), filename), files.end());
+        }
+      }
+
+      return true;
+    }
+    return false;
+  }
+
+  bool create_directory(const std::string &path) override {
+    mock_directories[path] = std::vector<std::string>();
+    return true;
+  }
+
+  std::vector<std::string> list_directory(const std::string &path) const override {
+    auto it = mock_directories.find(path);
+    if (it != mock_directories.end()) {
+      return it->second;
+    }
+    return std::vector<std::string>();
+  }
+};
+
+// ==========================================================================
+// Test Fixture: CrudHandlerTest
+// ==========================================================================
+class CrudHandlerTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    mock_fs = std::make_shared<MockFileSystem>();
+    handler = std::make_unique<CrudRequestHandler>("/api", "/data", mock_fs);
+  }
+
+  std::shared_ptr<MockFileSystem> mock_fs;
+  std::unique_ptr<CrudRequestHandler> handler;
+};
+
+// Test getting an entity that exists
+TEST_F(CrudHandlerTest, GetExistingEntity) {
+  // Setup mock file
+  mock_fs->write_file("/data/Shoes/1", "{\"name\":\"Nike\",\"size\":10}");
+
+  // Create request
+  auto req = create_request(http::verb::get, "/api/Shoes/1");
+
+  // Process request
+  auto res = handler->handle_request(req);
+
+  // Verify
+  EXPECT_EQ(res->result(), http::status::ok);
+  EXPECT_EQ(res->body(), "{\"name\":\"Nike\",\"size\":10}");
+}
+
+// Test getting an entity that doesn't exist
+TEST_F(CrudHandlerTest, GetNonExistentEntity) {
+  // Create request
+  auto req = create_request(http::verb::get, "/api/Shoes/999");
+
+  // Process request
+  auto res = handler->handle_request(req);
+
+  // Verify
+  EXPECT_EQ(res->result(), http::status::not_found);
+  EXPECT_TRUE(res->body().find("not found") != std::string::npos);
+}
+
+// Test listing entities when some exist
+TEST_F(CrudHandlerTest, ListExistingEntities) {
+  // Setup mock files
+  mock_fs->write_file("/data/Shoes/1", "{\"name\":\"Nike\",\"size\":10}");
+  mock_fs->write_file("/data/Shoes/2", "{\"name\":\"Adidas\",\"size\":9}");
+
+  // Create request
+  auto req = create_request(http::verb::get, "/api/Shoes");
+
+  // Process request
+  auto res = handler->handle_request(req);
+
+  // Verify
+  EXPECT_EQ(res->result(), http::status::ok);
+  // Check that the response contains both IDs
+  EXPECT_TRUE(res->body().find("\"1\"") != std::string::npos);
+  EXPECT_TRUE(res->body().find("\"2\"") != std::string::npos);
+}
+
+// Test listing entities when none exist
+TEST_F(CrudHandlerTest, ListEmptyEntities) {
+  // Create request
+  auto req = create_request(http::verb::get, "/api/EmptyCategory");
+
+  // Process request
+  auto res = handler->handle_request(req);
+
+  // Verify
+  EXPECT_EQ(res->result(), http::status::ok);
+  EXPECT_EQ(res->body(), "[]"); // Empty JSON array
+}
+
+// Test path parsing
+TEST_F(CrudHandlerTest, PathParsing) {
+  // Test parsing paths with entity and ID
+  {
+    auto [entity, id] = handler->parse_path("/Shoes/1");
+    EXPECT_EQ(entity, "Shoes");
+    EXPECT_TRUE(id.has_value());
+    EXPECT_EQ(id.value(), "1");
+  }
+
+  // Test parsing paths with just entity
+  {
+    auto [entity, id] = handler->parse_path("/Shoes");
+    EXPECT_EQ(entity, "Shoes");
+    EXPECT_FALSE(id.has_value());
+  }
+
+  // Test without leading slash
+  {
+    auto [entity, id] = handler->parse_path("Shoes");
+    EXPECT_EQ(entity, "Shoes");
+    EXPECT_FALSE(id.has_value());
+  }
+
+  // Test invalid paths
+  {
+    auto [entity, id] = handler->parse_path("/");
+    EXPECT_EQ(entity, "");
+    EXPECT_FALSE(id.has_value());
+  }
+
+  // Test path with too many segments
+  {
+    auto [entity, id] = handler->parse_path("/Shoes/1/extra");
+    EXPECT_EQ(entity, "");
+    EXPECT_FALSE(id.has_value());
+  }
 }

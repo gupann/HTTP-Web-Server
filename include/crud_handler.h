@@ -47,19 +47,11 @@ public:
 
 class CrudRequestHandler : public RequestHandler {
 public:
-  // Constructor with data_path parameter and filesystem interface for DI
-  CrudRequestHandler(const std::string &data_path,
+  CrudRequestHandler();
+  CrudRequestHandler(const std::string &prefix, const std::string &data_path,
                      std::shared_ptr<FileSystemInterface> fs = std::make_shared<RealFileSystem>());
 
-  // Handle HTTP requests (required by base class)
   std::unique_ptr<Response> handle_request(const Request &req) override;
-
-private:
-  // Root directory for data storage
-  std::string data_path_;
-
-  // File system interface for dependency injection
-  std::shared_ptr<FileSystemInterface> fs_;
 
   // Helper methods for CRUD operations
   std::unique_ptr<Response> handle_post(const Request &req, const std::string &entity_type);
@@ -72,6 +64,16 @@ private:
 
   // Helper method to parse URL path into entity type and ID
   std::pair<std::string, std::optional<std::string>> parse_path(const std::string &path);
+
+private:
+  // URI prefix to match
+  std::string prefix_;
+
+  // Root directory for data storage
+  std::string data_path_;
+
+  // File system interface for dependency injection
+  std::shared_ptr<FileSystemInterface> fs_;
 
   // Helper method to generate a unique ID for new entities
   std::string generate_id(const std::string &entity_type);

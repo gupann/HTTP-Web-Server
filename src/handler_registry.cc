@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <boost/log/trivial.hpp>
 
+#include "crud_handler.h"
 #include "echo_handler.h"
 #include "handler_factory.h"   // Instance(), Lookup(), …
 #include "not_found_handler.h" // Include for std::make_unique<not_found_handler>
@@ -20,6 +21,18 @@ static bool ParseStaticBlock(const NginxConfig *block, std::string *root_out) {
     }
   }
   return false; // root not found
+}
+
+static bool ParseCrudBlock(const NginxConfig *block, std::string *data_path_out) {
+  if (!block)
+    return false;
+  for (const auto &stmt : block->statements_) {
+    if (stmt->tokens_.size() == 2 && stmt->tokens_[0] == "data_path") {
+      *data_path_out = stmt->tokens_[1];
+      return true;
+    }
+  }
+  return false; // data_path not found
 }
 
 // ------------------------------------------------------------------
@@ -81,6 +94,16 @@ bool HandlerRegistry::Init(const NginxConfig &config) {
       };
     } else if (type == "EchoHandler") {
       bound_factory = [prefix]() { return std::make_unique<echo_handler>(prefix); };
+    } else if (type == "CrudHandler") {
+      std::string data_path = "./data"; // Default data path
+      if (!ParseCrudBlock(stmt->child_block_.get(), &data_path)) {
+        BOOST_LOG_TRIVIAL(error) << "CrudHandler at " << prefix
+                                 << " missing/invalid data_path directive";
+        return false;
+      }
+      bound_factory = [prefix, data_path]() {
+        return std::make_unique<CrudRequestHandler>(prefix, data_path);
+      };
     } else {
       // Generic fallback: zero-arg constructor via REGISTER_HANDLER
       bound_factory = *archetype;

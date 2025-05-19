@@ -21,3 +21,7 @@ location /api/v1 StaticHandler {
 location /admin StaticHandler {
   root ./static/admin;
 }
+
+location /crud CrudRequestHandler {
+  data_path ./mnt/crud;
+}
