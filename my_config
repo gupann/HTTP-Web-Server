@@ -22,6 +22,6 @@ location /admin StaticHandler {
   root ./static/admin;
 }
 
-location /crud CrudRequestHandler {
+location /crud CrudHandler {
   data_path ./mnt/crud;
 }

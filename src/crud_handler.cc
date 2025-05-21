@@ -162,10 +162,37 @@ std::unique_ptr<Response> CrudRequestHandler::handle_put(const Request &req,
 std::unique_ptr<Response> CrudRequestHandler::handle_delete(const Request &req,
                                                             const std::string &entity_type,
                                                             const std::string &id) {
-  // TODO: Implement DELETE functionality
-  // 1. Check if the entity exists
-  // 2. Delete the entity if found
-  return std::make_unique<Response>(http::status::not_implemented, req.version());
+  // Create a response with the same HTTP version as the request
+  auto res = std::make_unique<Response>(http::status::ok, req.version());
+  res->set(http::field::content_type, "application/json");
+
+  // Create directory path for the entity type
+  std::string entity_dir = data_path_ + "/" + entity_type;
+  std::string entity_path = entity_dir + "/" + id;
+
+  // Check if the entity file exists
+  if (!fs_->file_exists(entity_path)) {
+    // Entity not found - return 404
+    res->result(http::status::not_found);
+    res->body() = "{\"error\": \"Entity not found\"}";
+    res->prepare_payload();
+    return res;
+  }
+
+  // Try to delete the entity
+  if (!fs_->delete_file(entity_path)) {
+    // Failed to delete - return 500
+    res->result(http::status::internal_server_error);
+    res->body() = "{\"error\": \"Failed to delete entity\"}";
+    res->prepare_payload();
+    return res;
+  }
+
+  // Successful deletion - return 204 No Content
+  res->result(http::status::no_content);
+  res->body() = "";
+  res->prepare_payload();
+  return res;
 }
 
 std::pair<std::string, std::optional<std::string>>
