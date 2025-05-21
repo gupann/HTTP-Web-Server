@@ -1,49 +1,10 @@
 #ifndef CRUD_REQUEST_HANDLER_H
 #define CRUD_REQUEST_HANDLER_H
 
-#include <filesystem>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
+#include "real_file_system.h"
 #include "request_handler.h"
 
 namespace wasd::http {
-
-// Interface for file system operations to enable dependency injection for testing
-class FileSystemInterface {
-public:
-  virtual ~FileSystemInterface() = default;
-
-  // Check if a file exists
-  virtual bool file_exists(const std::string &path) const = 0;
-
-  // Read content from a file
-  virtual std::optional<std::string> read_file(const std::string &path) const = 0;
-
-  // Write content to a file
-  virtual bool write_file(const std::string &path, const std::string &content) = 0;
-
-  // Delete a file
-  virtual bool delete_file(const std::string &path) = 0;
-
-  // Create a directory
-  virtual bool create_directory(const std::string &path) = 0;
-
-  // List files in a directory
-  virtual std::vector<std::string> list_directory(const std::string &path) const = 0;
-};
-
-// Real implementation of the FileSystemInterface using std::filesystem
-class RealFileSystem : public FileSystemInterface {
-public:
-  bool file_exists(const std::string &path) const override;
-  std::optional<std::string> read_file(const std::string &path) const override;
-  bool write_file(const std::string &path, const std::string &content) override;
-  bool delete_file(const std::string &path) override;
-  bool create_directory(const std::string &path) override;
-  std::vector<std::string> list_directory(const std::string &path) const override;
-};
 
 class CrudRequestHandler : public RequestHandler {
 public:

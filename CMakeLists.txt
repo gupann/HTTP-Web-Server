@@ -38,9 +38,12 @@ include_directories(include)
 add_library(logger src/logger.cc)
 target_link_libraries(logger PUBLIC Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
 
+add_library(file_system src/real_file_system.cc src/mock_file_system.cc)
+target_link_libraries(file_system PUBLIC Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
+
 # Make library for request handlers
 add_library(request_handler_lib src/handler_registry.cc src/handler_factory.cc src/echo_handler.cc src/static_handler.cc src/not_found_handler.cc src/crud_handler.cc)
-target_link_libraries(request_handler_lib PUBLIC logger)
+target_link_libraries(request_handler_lib PUBLIC logger file_system)
 
 # Compile config_parser into a library
 add_library(config_parser src/config_parser.cc)
@@ -79,8 +82,12 @@ add_executable(handler_registry_test tests/handler_registry_test.cc)
 target_link_libraries(handler_registry_test request_handler_lib config_parser logger gtest_main)
 gtest_discover_tests(handler_registry_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
+add_executable(mock_file_system_test tests/mock_file_system_test.cc)
+target_link_libraries(mock_file_system_test file_system gtest_main)
+gtest_discover_tests(mock_file_system_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
 include(cmake/CodeCoverageReportConfig.cmake)
-generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib TESTS session_test config_parser_test server_test request_handler_test handler_registry_test)
+generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib file_system TESTS session_test config_parser_test server_test request_handler_test handler_registry_test mock_file_system_test)
 
 add_test(NAME integration_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} COMMAND bash tests/integration_test.sh)
 
