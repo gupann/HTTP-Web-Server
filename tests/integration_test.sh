@@ -39,6 +39,8 @@ location /static1 StaticHandler {
 }
 
 location /echo EchoHandler {}
+
+location /sleep SleepHandler {}
 EOF
 
     "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 & # run server in background
@@ -114,6 +116,24 @@ test_404_handler() {
     [ "$code" -eq 404 ]
 }
 
+# /sleep blocks ~3 s; /echo must still return immediately
+test_concurrent_requests() {
+    # Fire blocking request in the background
+    curl -s "http://localhost:$PORT/sleep" > /dev/null &
+    sleeper_pid=$!
+
+    start_ms=$(date +%s%3N)
+    curl -s "http://localhost:$PORT/echo/quick" > /dev/null
+    end_ms=$(date +%s%3N)
+    elapsed=$((end_ms - start_ms))
+
+    wait $sleeper_pid   # ensure background curl completes
+
+    # Expect echo to finish in less than the 3 000 ms sleep delay
+    [ "$elapsed" -lt 3000 ]
+}
+
+
 # register tests
 
 TESTS=(
@@ -124,6 +144,7 @@ TESTS=(
   test_echo_handler
   test_static_content_type
   test_404_handler
+  test_concurrent_requests
 )
 
 # main
@@ -148,7 +169,3 @@ else
   echo "All ${#TESTS[@]} test(s) passed"
   exit 0
 fi
-
-# notes:
-# we currently use a single instance of the server for all test cases because there is no shared state. there is currently no need to restart.
-# trap teardown_server EXIT INT TERM guarantees server shutdown on failure, so the server doesn't stray and continue running in the background

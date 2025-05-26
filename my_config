@@ -25,3 +25,4 @@ location /admin StaticHandler {
 location /crud CrudHandler {
   data_path ./mnt/crud;
 }
+location /sleep SleepHandler {}

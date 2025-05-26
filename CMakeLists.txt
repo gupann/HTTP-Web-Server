@@ -32,6 +32,9 @@ set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost 1.50 REQUIRED COMPONENTS system regex log log_setup)
 message(STATUS "Boost version: ${Boost_VERSION}")
 
+# POSIX / std::thread
+find_package(Threads REQUIRED)
+
 include_directories(include)
 
 # Make library for logger
@@ -55,7 +58,7 @@ target_link_libraries(webserver_lib PUBLIC request_handler_lib logger)
 
 # Build the main webserver executable
 add_executable(webserver src/webserver_main.cc)
-target_link_libraries(webserver webserver_lib config_parser logger)
+target_link_libraries(webserver webserver_lib config_parser logger Threads::Threads)
 
 # Define config parser unit test executable, link its libraries, and discover its tests
 add_executable(config_parser_test tests/config_parser_test.cc)

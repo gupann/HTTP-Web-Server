@@ -1,7 +1,11 @@
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <cstdlib>
 #include <iostream>
+#include <thread>
+#include <vector>
+
 #include "config_parser.h"
 #include "logger.h"
 #include "server.h"
@@ -55,7 +59,25 @@ int main(int argc, char *argv[]) {
 
   // start server
   server s(io_service, static_cast<short>(port), registry);
+  // Keep io_service alive even if it temporarily has no work
+  auto guard = boost::asio::make_work_guard(io_service);
+
+  // Create a pool: one worker per CPU (minimum 2)
+  unsigned int n_threads = std::max(2u, std::thread::hardware_concurrency());
+  std::vector<std::thread> pool;
+  pool.reserve(n_threads - 1);
+
+  // Launch worker threads
+  for (unsigned int i = 0; i < n_threads - 1; ++i) {
+    pool.emplace_back([&io_service]() { io_service.run(); });
+  }
+
+  // The main thread also processes the I/O queue
   io_service.run();
+
+  // Join workers on shutdown
+  for (auto &t : pool)
+    t.join();
 
   return 0;
 }

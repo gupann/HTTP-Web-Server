@@ -5,9 +5,10 @@
 
 #include "crud_handler.h"
 #include "echo_handler.h"
-#include "handler_factory.h"   // Instance(), Lookup(), …
-#include "not_found_handler.h" // Include for std::make_unique<not_found_handler>
-#include "static_handler.h"    // only needed temporarily for argument parsing helpers
+#include "handler_factory.h"
+#include "not_found_handler.h"
+#include "sleep_handler.h"
+#include "static_handler.h"
 
 using namespace wasd::http;
 
@@ -41,6 +42,11 @@ static bool ParseCrudBlock(const NginxConfig *block, std::string *data_path_out)
 bool HandlerRegistry::Init(const NginxConfig &config) {
   // Initialize not found handler factory
   not_found_factory_ = []() { return std::make_unique<not_found_handler>(); };
+
+  if (!HandlerFactoryRegistry::Instance().Lookup("SleepHandler")) {
+    HandlerFactoryRegistry::Instance().Register("SleepHandler",
+                                                []() { return std::make_unique<sleep_handler>(); });
+  }
 
   for (const auto &stmt : config.statements_) {
     if (stmt->tokens_.size() < 3 || stmt->tokens_[0] != "location")
@@ -104,6 +110,8 @@ bool HandlerRegistry::Init(const NginxConfig &config) {
       bound_factory = [prefix, data_path]() {
         return std::make_unique<CrudRequestHandler>(prefix, data_path);
       };
+    } else if (type == "SleepHandler") {
+      bound_factory = [prefix]() { return std::make_unique<sleep_handler>(); };
     } else {
       // Generic fallback: zero-arg constructor via REGISTER_HANDLER
       bound_factory = *archetype;
