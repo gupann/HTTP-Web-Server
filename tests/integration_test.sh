@@ -41,6 +41,8 @@ location /static1 StaticHandler {
 location /echo EchoHandler {}
 
 location /sleep SleepHandler {}
+
+location /health HealthRequestHandler {}
 EOF
 
     "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 & # run server in background
@@ -133,6 +135,15 @@ test_concurrent_requests() {
     [ "$elapsed" -lt 3000 ]
 }
 
+# /health must return 200 and body "OK"
+test_health_handler() {
+    local body code
+    body=$(curl -s -w "%{http_code}" "http://localhost:$PORT/health")
+    code=${body: -3}          # last 3 chars are the status
+    body=${body::${#body}-3}  # strip them off
+    [ "$code" -eq 200 ] && [ "$body" = "OK" ]
+}
+
 
 # register tests
 
@@ -145,6 +156,7 @@ TESTS=(
   test_static_content_type
   test_404_handler
   test_concurrent_requests
+  test_health_handler
 )
 
 # main

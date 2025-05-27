@@ -6,6 +6,7 @@
 #include "crud_handler.h"
 #include "echo_handler.h"
 #include "handler_factory.h"
+#include "health_handler.h"
 #include "not_found_handler.h"
 #include "sleep_handler.h"
 #include "static_handler.h"
@@ -112,6 +113,8 @@ bool HandlerRegistry::Init(const NginxConfig &config) {
       };
     } else if (type == "SleepHandler") {
       bound_factory = [prefix]() { return std::make_unique<sleep_handler>(); };
+    } else if (type == "HealthRequestHandler") {
+      bound_factory = [prefix]() { return std::make_unique<health_handler>(); };
     } else {
       // Generic fallback: zero-arg constructor via REGISTER_HANDLER
       bound_factory = *archetype;
