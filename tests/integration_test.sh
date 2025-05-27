@@ -75,11 +75,12 @@ test_echo_request() {
     grep -qE "^GET /echo/ HTTP/1\.[01]" <<<"$body" # body should match the valid response form
 }
 
-# malformed request via nc should not yield an HTTP status line
+# malformed request via nc should yield HTTP/1.x 400
 test_invalid_request() {
     local reply
-    reply=$(printf 'GARBAGE\r\n' | nc -q0 localhost "$PORT" || true)
-    ! grep -qE '^HTTP/1\.[01] ' <<<"$reply" # reply should NOT match the valid response form
+    # note the double CRLF so the parser considers the request "complete"
+    reply=$(printf 'GARBAGE\r\n\r\n' | nc -q0 localhost "$PORT" || true)
+    grep -qE '^HTTP/1\.[01] 400 ' <<<"$reply"
 }
 
 # static-file serving returns the file contents

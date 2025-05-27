@@ -33,13 +33,26 @@ static std::string safe_endpoint(const tcp::socket &sock) {
 
 void session::handle_read(const boost::system::error_code &error,
                           std::size_t /*bytes_transferred*/) {
-  if (error == http::error::end_of_stream) {
+  // Handle parser / network errors
+  if (error == http::error::end_of_stream) { // client closed cleanly
     delete this;
     return;
   }
-  if (error) {
-    delete this;
-    return;
+
+  if (error) { // malformed request, timeout, etc.
+    res_ = std::make_unique<Response>();
+    res_->version(11); // HTTP/1.1
+    res_->result(http::status::bad_request);
+    res_->set(http::field::content_type, "text/plain");
+    res_->body() = "400 Bad Request";
+    res_->prepare_payload();
+    res_->keep_alive(false);
+
+    http::async_write(socket_, *res_,
+                      [this](const boost::system::error_code &ec, std::size_t bytes) {
+                        handle_write(ec, bytes);
+                      });
+    return; // don’t fall through
   }
 
   // 1) Attempts to match the URI against our config -- returns 404 handler if no match found
@@ -58,16 +71,18 @@ void session::handle_read(const boost::system::error_code &error,
 
 void session::handle_write(const boost::system::error_code &error,
                            std::size_t /*bytes_transferred*/) {
-  // On error, tear down immediately
   if (error) {
     delete this;
     return;
   }
 
-  // Keep-alive? loop. Otherwise close.
-  if (req_.keep_alive()) {
-    start();
+  // If we already built a response, use its keep-alive flag;
+  // otherwise use the flag from the incoming request.
+  bool keep = res_ ? res_->keep_alive() : req_.keep_alive();
+
+  if (keep) {
+    start(); // stay open: read the next request
   } else {
-    delete this;
+    delete this; // close connection
   }
 }
