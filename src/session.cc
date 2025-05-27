@@ -59,6 +59,7 @@ void session::handle_read(const boost::system::error_code &error,
   HandlerFactory *fac = registry_->Match(std::string(req_.target()));
   std::unique_ptr<RequestHandler> handler;
   handler = (*fac)();
+  handler_name_ = typeid(*handler).name(); // simple RTTI string
 
   // 2) Generate the response
   res_ = handler->handle_request(req_);
@@ -71,6 +72,13 @@ void session::handle_read(const boost::system::error_code &error,
 
 void session::handle_write(const boost::system::error_code &error,
                            std::size_t /*bytes_transferred*/) {
+
+  if (res_) { // only log if we actually built a response
+    BOOST_LOG_TRIVIAL(info) << "[ResponseMetrics] " << "code:" << res_->result_int() << " "
+                            << "path:" << req_.target() << " " << "ip:" << safe_endpoint(socket_)
+                            << " " << "handler:" << handler_name_;
+  }
+
   if (error) {
     delete this;
     return;

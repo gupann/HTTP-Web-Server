@@ -41,6 +41,8 @@ private:
   std::chrono::steady_clock::time_point start_time_;
 
   std::shared_ptr<HandlerRegistry> registry_;
+
+  std::string handler_name_;
 };
 
 } // namespace wasd::http
