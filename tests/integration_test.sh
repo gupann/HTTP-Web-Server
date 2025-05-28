@@ -43,6 +43,10 @@ location /echo EchoHandler {}
 location /sleep SleepHandler {}
 
 location /health HealthRequestHandler {}
+
+location /crud CrudHandler {
+    data_path $(mktemp -d)/crud;
+}
 EOF
 
     "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 & # run server in background
@@ -145,6 +149,47 @@ test_health_handler() {
     [ "$code" -eq 200 ] && [ "$body" = "OK" ]
 }
 
+# test basic CRUD workflow
+test_crud_basic_workflow() {
+    # Create an entity
+    local create_response code id
+    create_response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"name":"test"}' \
+        "http://localhost:$PORT/crud/Items")
+    
+    code=$(echo "$create_response" | grep "HTTP_STATUS:" | cut -d: -f2)
+    [ "$code" -eq 201 ]
+    
+    # Extract ID and read the entity
+    id=$(echo "$create_response" | grep -o '"id":[0-9]*' | cut -d: -f2)
+    local read_code
+    read_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        "http://localhost:$PORT/crud/Items/$id")
+    [ "$read_code" -eq 200 ]
+    
+    # Delete the entity
+    local delete_code
+    delete_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+        "http://localhost:$PORT/crud/Items/$id")
+    [ "$delete_code" -eq 204 ]
+}
+
+# test CRUD error handling
+test_crud_error_handling() {
+    # Test invalid JSON
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{invalid}' \
+        "http://localhost:$PORT/crud/Test")
+    [ "$code" -eq 400 ]
+    
+    # Test reading non-existent entity
+    code=$(curl -s -o /dev/null -w "%{http_code}" \
+        "http://localhost:$PORT/crud/Test/999")
+    [ "$code" -eq 404 ]
+}
 
 # register tests
 
@@ -158,6 +203,8 @@ TESTS=(
   test_404_handler
   test_concurrent_requests
   test_health_handler
+  test_crud_basic_workflow
+  test_crud_error_handling
 )
 
 # main

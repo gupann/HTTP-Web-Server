@@ -9,6 +9,10 @@ bool MockFileSystem::file_exists(const std::string &path) const {
 }
 
 std::optional<std::string> MockFileSystem::read_file(const std::string &path) const {
+  if (read_should_fail) {
+    return std::nullopt;
+  }
+
   auto it = mock_files.find(path);
   if (it != mock_files.end()) {
     return it->second;
@@ -17,6 +21,10 @@ std::optional<std::string> MockFileSystem::read_file(const std::string &path) co
 }
 
 bool MockFileSystem::write_file(const std::string &path, const std::string &content) {
+  if (write_should_fail) {
+    return false;
+  }
+
   mock_files[path] = content;
 
   // Extract directory from path
@@ -41,6 +49,10 @@ bool MockFileSystem::write_file(const std::string &path, const std::string &cont
 }
 
 bool MockFileSystem::delete_file(const std::string &path) {
+  if (delete_should_fail) {
+    return false;
+  }
+
   auto it = mock_files.find(path);
   if (it != mock_files.end()) {
     mock_files.erase(it);
@@ -64,7 +76,14 @@ bool MockFileSystem::delete_file(const std::string &path) {
 }
 
 bool MockFileSystem::create_directory(const std::string &path) {
-  mock_directories[path] = std::vector<std::string>();
+  if (create_directory_should_fail) {
+    return false;
+  }
+
+  // Only create directory if it doesn't already exist
+  if (mock_directories.find(path) == mock_directories.end()) {
+    mock_directories[path] = std::vector<std::string>();
+  }
   return true;
 }
 

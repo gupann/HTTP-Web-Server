@@ -23,7 +23,7 @@ location /admin StaticHandler {
 }
 
 location /crud CrudHandler {
-  data_path ./mnt/crud;
+  data_path /mnt/storage/crud;
 }
 
 location /health HealthRequestHandler {}

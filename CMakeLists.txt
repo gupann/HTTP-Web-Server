@@ -85,12 +85,18 @@ add_executable(handler_registry_test tests/handler_registry_test.cc)
 target_link_libraries(handler_registry_test request_handler_lib config_parser logger gtest_main)
 gtest_discover_tests(handler_registry_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
+# Define mock file system unit test executable, link its libraries, and discover its tests
 add_executable(mock_file_system_test tests/mock_file_system_test.cc)
 target_link_libraries(mock_file_system_test file_system gtest_main)
 gtest_discover_tests(mock_file_system_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
+# Define CRUD handler unit test executable, link its libraries, and discover its tests
+add_executable(crud_handler_test tests/crud_handler_test.cc)
+target_link_libraries(crud_handler_test request_handler_lib logger gtest_main)
+gtest_discover_tests(crud_handler_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
 include(cmake/CodeCoverageReportConfig.cmake)
-generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib file_system TESTS session_test config_parser_test server_test request_handler_test handler_registry_test mock_file_system_test)
+generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib file_system TESTS session_test config_parser_test server_test request_handler_test handler_registry_test mock_file_system_test crud_handler_test)
 
 add_test(NAME integration_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} COMMAND bash tests/integration_test.sh)
 

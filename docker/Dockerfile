@@ -34,3 +34,6 @@ CMD ["my_config"]
 
 # Create a volume to write logs to
 VOLUME ["/logs"]
+
+# Create a volume for persistent data storage
+VOLUME ["/mnt/storage"]

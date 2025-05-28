@@ -14,9 +14,12 @@ services:
       - "127.0.0.1:80:80"
     volumes:
       - webserver-logs:/logs
+      - webserver-data:/mnt/storage
     depends_on:
       - base
 
 volumes:
   webserver-logs:
+    driver: local
+  webserver-data:
     driver: local
