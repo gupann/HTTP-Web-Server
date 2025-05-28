@@ -12,7 +12,9 @@ location /img StaticHandler {
 
 location /debug EchoHandler {}
 
-location /api EchoHandler {}
+location /crud CrudHandler {
+  data_path ./mnt/storage;
+}
 
 location /api/v1 StaticHandler {
   root ./static/api/v1;
@@ -20,10 +22,6 @@ location /api/v1 StaticHandler {
 
 location /admin StaticHandler {
   root ./static/admin;
-}
-
-location /crud CrudHandler {
-  data_path /mnt/storage/crud;
 }
 
 location /health HealthRequestHandler {}
