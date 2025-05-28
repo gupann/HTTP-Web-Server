@@ -25,4 +25,7 @@ location /admin StaticHandler {
 location /crud CrudHandler {
   data_path ./mnt/crud;
 }
+
+location /health HealthRequestHandler {}
+
 location /sleep SleepHandler {}
