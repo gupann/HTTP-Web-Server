@@ -16,6 +16,9 @@ RUN ctest --output-on_failure
 # Define deploy stage
 FROM ubuntu:noble AS deploy
 
+# copy the cmark libraries that were already installed in the builder stage
+COPY --from=builder /usr/lib/*/libcmark-gfm*.so* /usr/lib/
+
 # Copy server output binary to "."
 COPY --from=builder /usr/src/project/build/bin/webserver .
 COPY --from=builder /usr/src/project/my_config .
