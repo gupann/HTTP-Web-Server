@@ -1,10 +1,13 @@
-#include "markdown_handler.h"
 #include <boost/log/trivial.hpp>
 #include <filesystem>
+#include <optional>
+
 #include "cmark-gfm-core-extensions.h"
 #include "cmark-gfm.h"
 #include "handler_factory.h"
+#include "markdown_handler.h"
 #include "real_file_system.h"
+
 using namespace wasd::http;
 namespace http = boost::beast::http;
 namespace fs = std::filesystem;
@@ -20,6 +23,19 @@ std::unique_ptr<Response> create_markdown_error_response(http::status status_cod
   res->prepare_payload();
   return res;
 }
+
+// Read an entire file (≤ 1 MB) into a string; return empty optional on failure
+static std::optional<std::string> read_small_file(const std::shared_ptr<FileSystemInterface> &fs,
+                                                  const std::string &path) {
+  constexpr std::size_t MAX_SIZE = 1 * 1024 * 1024; // 1 MB
+  if (!fs || !fs->file_exists(path))
+    return std::nullopt;
+  auto data = fs->read_file(path);
+  if (!data || data->size() > MAX_SIZE)
+    return std::nullopt;
+  return data;
+}
+
 // Default constructor
 markdown_handler::markdown_handler()
     : RequestHandler(), location_path_("./"), configured_root_("./"), template_path_(""),
@@ -190,24 +206,51 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
                                           "Internal Server Error - Could not read file");
   }
   std::string markdown_input = markdown_content_opt.value();
-  // 6. Convert Markdown content to HTML
-  int cmark_options = CMARK_OPT_DEFAULT; // For basic HTML safety
+
+  /* ---------- 6. Convert Markdown to HTML fragment ---------- */
+  int cmark_options = CMARK_OPT_DEFAULT;
   char *html_output_c_str =
       cmark_markdown_to_html(markdown_input.c_str(), markdown_input.length(), cmark_options);
   if (!html_output_c_str) {
-    BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: cmark_markdown_to_html failed for: "
+    BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: cmark_markdown_to_html failed for "
                              << final_file_path_str;
     return create_markdown_error_response(http::status::internal_server_error, req.version(),
                                           "Internal Server Error - Markdown conversion failed");
   }
+  std::string html_fragment(html_output_c_str);
+  free(html_output_c_str);
+
+  /* ---------- 7. Load wrapper template & inject content ---------- */
+  std::string full_page;
+  bool wrapped = false;
+  if (!template_path_.empty()) {
+    auto tpl_opt = read_small_file(fs_, template_path_);
+    if (tpl_opt) {
+      full_page = *tpl_opt;
+      const std::string placeholder = "{{content}}";
+      std::size_t pos = full_page.find(placeholder);
+      if (pos != std::string::npos) {
+        full_page.replace(pos, placeholder.length(), html_fragment);
+        wrapped = true;
+      }
+    }
+  }
+  if (!wrapped) {
+    /* Fallback: no template or placeholder missing */
+    full_page = html_fragment;
+  }
+
+  /* ---------- 8. Build the HTTP response ---------- */
   auto res = std::make_unique<Response>();
   res->result(http::status::ok);
   res->version(req.version());
   res->set(http::field::content_type, "text/html");
-  res->body() = html_output_c_str;
-  free(html_output_c_str);
+  res->body() = std::move(full_page);
   res->prepare_payload();
-  BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Successfully served " << final_file_path_str;
+
+  BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Served " << final_file_path_str
+                          << (wrapped ? " (wrapped)" : " (raw)");
   return res;
 }
+
 REGISTER_HANDLER("MarkdownHandler", markdown_handler)
