@@ -8,6 +8,9 @@
 #include "handlers/markdown_handler.h"
 #include "real_file_system.h"
 
+#include <sstream>
+#include <iomanip>
+
 using namespace wasd::http;
 namespace http = boost::beast::http;
 namespace fs = std::filesystem;
@@ -34,6 +37,19 @@ static std::optional<std::string> read_small_file(const std::shared_ptr<FileSyst
   if (!data || data->size() > MAX_SIZE)
     return std::nullopt;
   return data;
+}
+
+// Convert fs::file_time_type → RFC‑1123 string for HTTP headers
+static std::string http_date_from_fs_time(fs::file_time_type tp) {
+  auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                tp - fs::file_time_type::clock::now()
+                + std::chrono::system_clock::now());
+  std::time_t tt = std::chrono::system_clock::to_time_t(sctp);
+  std::tm gmt    = *std::gmtime(&tt);
+
+  std::ostringstream os;
+  os << std::put_time(&gmt, "%a, %d %b %Y %H:%M:%S GMT");
+  return os.str();
 }
 
 // Default constructor
@@ -186,9 +202,39 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     return create_markdown_error_response(http::status::not_found, req.version(),
                                           "404 Not Found - File does not exist");
   }
+  /* ---------- File‑metadata for caching ---------- */
+  auto        file_mtime = fs::last_write_time(final_file_path_str, ec_fs);
+  if (ec_fs) { /*  existing error branch is fine  */ }
+
+  uintmax_t   file_size  = fs::file_size(final_file_path_str, ec_fs);
+
+  // strong ETag: "<size>-<mtime_epoch>"
+  auto mtime_secs = std::chrono::time_point_cast<std::chrono::seconds>(file_mtime)
+                      .time_since_epoch().count();
+  std::string etag          = "\"" + std::to_string(file_size) + "-" +
+                              std::to_string(mtime_secs) + "\"";
+  std::string last_modified = http_date_from_fs_time(file_mtime);
+
+  /* ---------- Conditional‑GET handling ---------- */
+  bool send_304 = false;
+
+  if (req.find(http::field::if_none_match) != req.end()) {
+    if (req.at(http::field::if_none_match) == etag) send_304 = true;
+  } else if (req.find(http::field::if_modified_since) != req.end()) {
+    if (req.at(http::field::if_modified_since) == last_modified) send_304 = true;
+  }
+
+  if (send_304) {
+    auto res = std::make_unique<Response>();
+    res->result(http::status::not_modified);   // 304
+    res->version(req.version());
+    res->set(http::field::etag, etag);
+    res->set(http::field::last_modified, last_modified);
+    return res;                                // ── early exit
+  }
+
   // 4. File Size Limit (1MB) using std::filesystem
   const uintmax_t MAX_FILE_SIZE = 1 * 1024 * 1024; // 1MB
-  uintmax_t file_size = fs::file_size(final_file_path_str, ec_fs);
   if (ec_fs) {
     BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: Could not get file size for: "
                              << final_file_path_str << ". Error: " << ec_fs.message();
@@ -228,6 +274,8 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     res->version(req.version());
     res->set(http::field::content_type, "text/markdown");
     res->body() = std::move(markdown_input);
+    res->set(http::field::etag,          etag);
+    res->set(http::field::last_modified, last_modified);
     res->prepare_payload();
 
     BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Served RAW " << final_file_path_str;
@@ -273,6 +321,8 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
   res->version(req.version());
   res->set(http::field::content_type, "text/html");
   res->body() = std::move(full_page);
+  res->set(http::field::etag,          etag);
+  res->set(http::field::last_modified, last_modified);
   res->prepare_payload();
 
   BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Served " << final_file_path_str
