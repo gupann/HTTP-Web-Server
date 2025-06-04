@@ -1,7 +1,15 @@
-# Nested Information
+# Nested Paths & Raw Mode
 
-This content is located within a subdirectory.
+## 1. Nested Directory Rendering
+- This file lives at `/docs/subdir/nested.md` (a subdirectory).
+- Links to sibling or parent files work automatically:
+  - [Back to Home](../index.md)
+  - [Another Page](../anotherpage.md)
 
-It demonstrates how the handler manages nested paths.
+When you navigate to `/docs/subdir/nested.md`, the handler:
+1. Sanitizes `../` to prevent path traversal.
+2. Converts this Markdown into HTML.
+3. Wraps it in the same `md_wrapper.html` template.
 
-Go back to [Main Index](../index.md) or [Previous Page](../another_page.md).
+## 2. Raw Mode
+- To view the Markdown source instead of HTML, append `?raw=1`:
