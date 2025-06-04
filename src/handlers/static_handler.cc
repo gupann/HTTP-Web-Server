@@ -1,4 +1,4 @@
-#include "static_handler.h"
+#include "handlers/static_handler.h"
 
 #include <algorithm>
 #include <boost/log/trivial.hpp>

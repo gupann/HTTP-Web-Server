@@ -1,9 +1,9 @@
 #include "config_parser.h"
-#include "echo_handler.h"
 #include "gtest/gtest.h"
 #include "handler_registry.h"
-#include "not_found_handler.h"
-#include "static_handler.h"
+#include "handlers/echo_handler.h"
+#include "handlers/not_found_handler.h"
+#include "handlers/static_handler.h"
 
 using namespace wasd::http;
 

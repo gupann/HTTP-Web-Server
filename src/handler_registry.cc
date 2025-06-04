@@ -1,15 +1,15 @@
 #include "handler_registry.h"
 #include <algorithm>
 #include <boost/log/trivial.hpp>
-#include "crud_handler.h"
-#include "echo_handler.h"
 #include "handler_factory.h"
-#include "health_handler.h"
-#include "markdown_handler.h"
-#include "not_found_handler.h"
+#include "handlers/crud_handler.h"
+#include "handlers/echo_handler.h"
+#include "handlers/health_handler.h"
+#include "handlers/markdown_handler.h"
+#include "handlers/not_found_handler.h"
+#include "handlers/sleep_handler.h"
+#include "handlers/static_handler.h"
 #include "real_file_system.h"
-#include "sleep_handler.h"
-#include "static_handler.h"
 using namespace wasd::http;
 static bool ParseStaticBlock(const NginxConfig *block, std::string *root_out) {
   if (!block)

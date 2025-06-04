@@ -1,7 +1,7 @@
 #include "session.h"
 #include <boost/log/trivial.hpp>
-#include "echo_handler.h"
-#include "static_handler.h"
+#include "handlers/echo_handler.h"
+#include "handlers/static_handler.h"
 
 using Clock = std::chrono::steady_clock;
 using namespace wasd::http;

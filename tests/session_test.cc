@@ -3,9 +3,9 @@
 #include <sstream>
 #include <string>
 #include "config_parser.h"
-#include "echo_handler.h"
 #include "gtest/gtest.h"
 #include "handler_registry.h"
+#include "handlers/echo_handler.h"
 #include "session.h"
 
 using namespace wasd::http;

@@ -1,10 +1,10 @@
-#include "crud_handler.h"
-#include "echo_handler.h"
 #include "gtest/gtest.h"
+#include "handlers/crud_handler.h"
+#include "handlers/echo_handler.h"
+#include "handlers/not_found_handler.h"
+#include "handlers/static_handler.h"
 #include "mock_file_system.h"
-#include "not_found_handler.h"
 #include "request_handler.h"
-#include "static_handler.h"
 
 #include <boost/beast/http.hpp>
 #include <filesystem>

@@ -1,4 +1,4 @@
-#include "health_handler.h"
+#include "handlers/health_handler.h"
 #include "handler_factory.h"
 
 using namespace wasd::http;

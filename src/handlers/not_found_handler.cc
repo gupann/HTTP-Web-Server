@@ -1,4 +1,4 @@
-#include "not_found_handler.h"
+#include "handlers/not_found_handler.h"
 #include "handler_factory.h" // For REGISTER_HANDLER
 
 using namespace wasd::http;

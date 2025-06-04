@@ -2,7 +2,7 @@
 #include <boost/json.hpp>
 #include <gtest/gtest.h>
 
-#include "crud_handler.h"
+#include "handlers/crud_handler.h"
 #include "mock_file_system.h"
 
 using namespace wasd::http;

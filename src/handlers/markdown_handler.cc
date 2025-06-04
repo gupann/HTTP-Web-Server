@@ -5,7 +5,7 @@
 #include "cmark-gfm-core-extensions.h"
 #include "cmark-gfm.h"
 #include "handler_factory.h"
-#include "markdown_handler.h"
+#include "handlers/markdown_handler.h"
 #include "real_file_system.h"
 
 using namespace wasd::http;
