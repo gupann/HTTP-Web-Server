@@ -19,4 +19,4 @@ Our goal is to make the server self-documenting by serving any `.md` file under 
 
 Ready? Click below to see more details about each feature:
 
-[Feature Details](anotherpage.md)
+[Feature Details](another_page.md)
