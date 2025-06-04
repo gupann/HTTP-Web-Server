@@ -2,6 +2,7 @@
 #include <memory>
 #include <string>
 #include "config_parser.h"
+#include "file_system.h" 
 #include "real_file_system.h"
 #include "request_handler.h"
 namespace wasd::http {
@@ -10,18 +11,18 @@ public:
   // Constructor that takes parsed configuration
   markdown_handler();
   markdown_handler(const std::string &location_path, const std::string &configured_root,
-                   const std::string &template_path, std::shared_ptr<RealFileSystem> fs);
+                   const std::string &template_path, std::shared_ptr<FileSystemInterface> fs);
   // Static factory method - to be called by HandlerRegistry
   static std::unique_ptr<RequestHandler> create(const std::string &location_path,
                                                 const std::string &configured_root,
                                                 const std::string &template_path,
-                                                std::shared_ptr<RealFileSystem> fs);
+                                                std::shared_ptr<FileSystemInterface> fs);
   std::unique_ptr<Response> handle_request(const Request &req) override;
 
 private:
   std::string location_path_;
   std::string configured_root_;
   std::string template_path_;
-  std::shared_ptr<RealFileSystem> fs_;
+  std::shared_ptr<FileSystemInterface> fs_;
 };
 } // namespace wasd::http

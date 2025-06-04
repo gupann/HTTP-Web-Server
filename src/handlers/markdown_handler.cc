@@ -51,14 +51,14 @@ markdown_handler::markdown_handler()
 markdown_handler::markdown_handler(const std::string &location_path,
                                    const std::string &configured_root,
                                    const std::string &template_path,
-                                   std::shared_ptr<RealFileSystem> fs)
+                                   std::shared_ptr<FileSystemInterface> fs)
     : RequestHandler(), location_path_(location_path), configured_root_(configured_root),
       template_path_(template_path), fs_(fs) {
   BOOST_LOG_TRIVIAL(info) << "MarkdownHandler instance created for location: " << location_path_
                           << " with root: " << configured_root_
                           << " and template: " << template_path_ << " using "
-                          << (fs_ ? "provided RealFileSystem"
-                                  : "null RealFileSystem (this is unexpected)");
+                          << (fs_ ? "provided FileSystemInterface"
+                                  : "null FileSystemInterface (this is unexpected)");
   static bool extensions_registered = false;
   if (!extensions_registered) {
     cmark_gfm_core_extensions_ensure_registered();
@@ -69,7 +69,7 @@ markdown_handler::markdown_handler(const std::string &location_path,
 std::unique_ptr<RequestHandler> markdown_handler::create(const std::string &location_path,
                                                          const std::string &configured_root,
                                                          const std::string &template_path,
-                                                         std::shared_ptr<RealFileSystem> fs) {
+                                                         std::shared_ptr<FileSystemInterface> fs) {
   return std::make_unique<markdown_handler>(location_path, configured_root, template_path, fs);
 }
 std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
@@ -77,11 +77,25 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
                           << std::string(req.target());
   if (!fs_) { // Should not happen if factory is used correctly
     BOOST_LOG_TRIVIAL(error)
-        << "MarkdownHandler: RealFileSystem (fs_) is null. This is a critical error.";
+        << "MarkdownHandler: FileSystemInterface (fs_) is null. This is a critical error.";
     return create_markdown_error_response(http::status::internal_server_error, req.version(),
                                           "Internal Server Error: File system not available.");
   }
-  std::string request_target_str(req.target());
+
+  // 0. Parse query string
+  std::string target_full(req.target());             // e.g.  "/docs/guide.md?raw=1"
+  const auto qpos        = target_full.find('?');
+
+  // Path that we’ll use for all path‑sanitisation logic
+  std::string target_path = target_full.substr(0, qpos);   //  "/docs/guide.md"
+
+  // Everything after the '?', or empty if no query
+  std::string query       = (qpos == std::string::npos) ? "" 
+                                                        : target_full.substr(qpos + 1);
+  // Detect ?raw=1 (allow it to be anywhere in the query string)
+  bool raw_requested = (query.find("raw=1") != std::string::npos);
+
+
   // 1. Resolve the requested file path relative to the handler's location_path_
   std::string relative_path_in_docs;
   std::string comparable_location_path = location_path_;
@@ -90,19 +104,19 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     comparable_location_path += '/';
   }
   if (location_path_ == "/") {
-    if (request_target_str.rfind("/", 0) == 0 && request_target_str.length() > 1) {
-      relative_path_in_docs = request_target_str.substr(1);
-    } else if (request_target_str == "/") {
+    if (target_path.rfind("/", 0) == 0 && target_path.length() > 1) {
+      relative_path_in_docs = target_path.substr(1);
+    } else if (target_path == "/") {
       relative_path_in_docs = "";
     } else {
-      relative_path_in_docs = request_target_str;
+      relative_path_in_docs = target_path;
     }
-  } else if (request_target_str.rfind(comparable_location_path, 0) == 0) {
-    relative_path_in_docs = request_target_str.substr(comparable_location_path.length());
-  } else if (request_target_str == location_path_) {
+  } else if (target_path.rfind(comparable_location_path, 0) == 0) {
+    relative_path_in_docs = target_path.substr(comparable_location_path.length());
+  } else if (target_path == location_path_) {
     relative_path_in_docs = "";
   } else {
-    BOOST_LOG_TRIVIAL(warning) << "MarkdownHandler: Request target '" << request_target_str
+    BOOST_LOG_TRIVIAL(warning) << "MarkdownHandler: Request target '" << target_path
                                << "' does not properly align with location_path '" << location_path_
                                << "'.";
     return create_markdown_error_response(http::status::not_found, req.version(),
@@ -165,7 +179,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
                                           "404 Not Found - Not a Markdown file");
   }
   std::string final_file_path_str = canonical_target_path.string();
-  // 3. Check file existence and type using RealFileSystem (fs_) and std::filesystem
+  // 3. Check file existence and type using FileSystemInterface (fs_) and std::filesystem
   if (!fs_->file_exists(final_file_path_str) || !fs::is_regular_file(final_file_path_str, ec_fs)) {
     BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Markdown file not found or not a regular file: "
                             << final_file_path_str << (ec_fs ? " Error: " + ec_fs.message() : "");
@@ -197,7 +211,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     res->prepare_payload();
     return res;
   }
-  // 5. Read the Markdown file content using RealFileSystem (fs_)
+  // 5. Read the Markdown file content using FileSystemInterface (fs_)
   auto markdown_content_opt = fs_->read_file(final_file_path_str);
   if (!markdown_content_opt) {
     BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: Failed to read Markdown file: "
@@ -206,6 +220,19 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
                                           "Internal Server Error - Could not read file");
   }
   std::string markdown_input = markdown_content_opt.value();
+  
+  // ---------- 6a.  Raw‑mode early‑return ----------
+  if (raw_requested) {
+    auto res = std::make_unique<Response>();
+    res->result(http::status::ok);
+    res->version(req.version());
+    res->set(http::field::content_type, "text/markdown");
+    res->body() = std::move(markdown_input);
+    res->prepare_payload();
+
+    BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Served RAW " << final_file_path_str;
+    return res;
+  }
 
   /* ---------- 6. Convert Markdown to HTML fragment ---------- */
   int cmark_options = CMARK_OPT_DEFAULT;

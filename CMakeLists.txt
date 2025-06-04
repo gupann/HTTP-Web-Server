@@ -100,8 +100,18 @@ add_executable(crud_handler_test tests/crud_handler_test.cc)
 target_link_libraries(crud_handler_test request_handler_lib logger gtest_main)
 gtest_discover_tests(crud_handler_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
+# Define markdown handler unit test executable, link its libraries, and discover its tests
+add_executable(markdown_handler_test tests/markdown_handler_test.cc)
+target_link_libraries(markdown_handler_test
+    request_handler_lib          # markdown_handler + its deps
+    file_system                  # MockFileSystem helpers
+    logger                       # shared logging lib
+    gmock                        # optional, needed only if you use EXPECT_CALL
+    gtest_main)
+gtest_discover_tests(markdown_handler_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
 include(cmake/CodeCoverageReportConfig.cmake)
-generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib file_system TESTS session_test config_parser_test server_test request_handler_test handler_registry_test mock_file_system_test crud_handler_test)
+generate_coverage_report(TARGETS webserver_lib config_parser request_handler_lib file_system TESTS session_test config_parser_test server_test request_handler_test handler_registry_test mock_file_system_test crud_handler_test markdown_handler_test)
 
 add_test(NAME integration_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} COMMAND bash tests/integration_test.sh)
 
