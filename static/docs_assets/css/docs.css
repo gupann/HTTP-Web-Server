@@ -1,0 +1,24 @@
+/* Minimal styling for rendered markdown */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+               Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  background: #fdfdfd;
+  color: #222;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  body { background: #181818; color: #eee; }
+  a    { color: #80b3ff; }
+}
+
+.container {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+pre, code { font-family: "Fira Code", monospace; }
+pre { padding: .75rem; overflow-x: auto; border-radius: .4rem; }

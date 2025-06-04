@@ -2,30 +2,25 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Document</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            margin: 20px;
-            line-height: 1.6;
-        }
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{title}}</title>
 
-        .container {
-            max-width: 800px;
-            margin: auto;
-            padding: 20px;
-            border: 1px solid #ddd;
-        }
+    <!-- Core page styling -->
+    <link rel="stylesheet" href="/static/docs_assets/css/docs.css" />
 
-        h1,
-        h2,
-        h3 {
-            color: #333;
-        }
-    </style>
+    <!-- highlight.js syntax-highlight theme -->
+    <link
+      rel="stylesheet"
+      href="/static/docs_assets/js/highlight/github.css" />
+
+    <!-- highlight.js library -->
+    <script src="/static/docs_assets/js/highlight/highlight.min.js"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => hljs.highlightAll());
+    </script>
 </head>
+
 
 <body>
     <div class="container">

@@ -20,6 +20,10 @@ FROM ubuntu:noble AS deploy
 COPY --from=builder /usr/src/project/build/bin/webserver .
 COPY --from=builder /usr/src/project/my_config .
 
+# Copy docs and template files
+COPY --from=builder /usr/src/project/docs /docs
+COPY --from=builder /usr/src/project/templates /templates
+
 # Copy static files
 COPY --from=builder /usr/src/project/static /static
 

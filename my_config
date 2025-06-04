@@ -32,3 +32,7 @@ location /docs MarkdownHandler {
   root ./docs;
   template ./templates/md_wrapper.html;
 }
+
+location /static/docs_assets StaticHandler {
+    root ./static/docs_assets;
+}
