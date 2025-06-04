@@ -35,6 +35,9 @@ message(STATUS "Boost version: ${Boost_VERSION}")
 # POSIX / std::thread
 find_package(Threads REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CMARK_GFM REQUIRED libcmark-gfm IMPORTED_TARGET)
+
 include_directories(include)
 
 # Make library for logger
@@ -45,8 +48,8 @@ add_library(file_system src/real_file_system.cc src/mock_file_system.cc)
 target_link_libraries(file_system PUBLIC Boost::system Boost::regex Boost::log_setup Boost::log) # Ensure consumers will also link Boost
 
 # Make library for request handlers
-add_library(request_handler_lib src/handler_registry.cc src/handler_factory.cc src/echo_handler.cc src/static_handler.cc src/not_found_handler.cc src/crud_handler.cc src/health_handler.cc)
-target_link_libraries(request_handler_lib PUBLIC logger file_system)
+add_library(request_handler_lib src/handler_registry.cc src/handler_factory.cc src/echo_handler.cc src/static_handler.cc src/not_found_handler.cc src/crud_handler.cc src/health_handler.cc src/markdown_handler.cc)
+target_link_libraries(request_handler_lib PUBLIC logger file_system PkgConfig::CMARK_GFM)
 
 # Compile config_parser into a library
 add_library(config_parser src/config_parser.cc)

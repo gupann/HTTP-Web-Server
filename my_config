@@ -27,3 +27,8 @@ location /admin StaticHandler {
 location /health HealthRequestHandler {}
 
 location /sleep SleepHandler {}
+
+location /docs MarkdownHandler {
+  root ./docs;
+  template ./templates/md_wrapper.html;
+}

@@ -16,4 +16,7 @@ RUN apt-get update && apt-get install -y \
     libgmock-dev \
     libgtest-dev \
     netcat-openbsd \
-    gcovr
+    gcovr \
+    libcmark-gfm-dev \
+    libcmark-gfm-extensions-dev \
+    pkg-config
