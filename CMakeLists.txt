@@ -38,6 +38,8 @@ find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CMARK_GFM REQUIRED libcmark-gfm IMPORTED_TARGET)
 
+find_package(ZLIB REQUIRED)
+
 include_directories(include)
 
 # Make library for logger
@@ -59,7 +61,7 @@ target_link_libraries(config_parser PUBLIC Boost::regex Boost::log_setup Boost::
 
 # Compile core webserver logic (server, session) into a library
 add_library(webserver_lib src/server.cc src/session.cc)
-target_link_libraries(webserver_lib PUBLIC request_handler_lib logger)
+target_link_libraries(webserver_lib PUBLIC request_handler_lib logger ZLIB::ZLIB)
 
 # Build the main webserver executable
 add_executable(webserver src/webserver_main.cc)

@@ -1,11 +1,58 @@
 #include "session.h"
 #include <boost/log/trivial.hpp>
+#include <zlib.h>
 #include "handlers/echo_handler.h"
 #include "handlers/static_handler.h"
 
 using Clock = std::chrono::steady_clock;
 using namespace wasd::http;
 namespace http = boost::beast::http;
+
+// compress_gzip – deflate-with-gzip-wrapper; returns true on success
+static bool compress_gzip(const std::string &in, std::string &out) {
+  z_stream zs{};
+  if (deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                   15 | 16, // 15-bit window | 16 ⇒ write gzip wrapper
+                   8, Z_DEFAULT_STRATEGY) != Z_OK)
+    return false;
+
+  zs.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(in.data()));
+  zs.avail_in = static_cast<uInt>(in.size());
+
+  char buf[32768];
+  int ret;
+
+  do {
+    zs.next_out = reinterpret_cast<Bytef *>(buf);
+    zs.avail_out = sizeof(buf);
+
+    ret = deflate(&zs, Z_FINISH);
+    if (out.size() < zs.total_out)
+      out.append(buf, zs.total_out - out.size());
+  } while (ret == Z_OK);
+
+  deflateEnd(&zs);
+  return ret == Z_STREAM_END;
+}
+
+void session::maybe_compress_response() {
+  if (!res_)
+    return;
+
+  bool wants_gzip = req_.find(http::field::accept_encoding) != req_.end() &&
+                    req_[http::field::accept_encoding].find("gzip") != std::string::npos;
+
+  if (wants_gzip && res_->body().size() > 1024 &&
+      res_->find(http::field::content_encoding) == res_->end()) {
+
+    std::string compressed;
+    if (compress_gzip(res_->body(), compressed)) { // ← your util
+      res_->body() = std::move(compressed);
+      res_->set(http::field::content_encoding, "gzip");
+      res_->content_length(res_->body().size());
+    }
+  }
+}
 
 session::session(boost::asio::io_service &io, std::shared_ptr<HandlerRegistry> reg)
     : socket_(io), registry_(std::move(reg)) {}
@@ -48,6 +95,7 @@ void session::handle_read(const boost::system::error_code &error,
     res_->prepare_payload();
     res_->keep_alive(false);
 
+    maybe_compress_response();
     http::async_write(socket_, *res_,
                       [this](const boost::system::error_code &ec, std::size_t bytes) {
                         handle_write(ec, bytes);
@@ -65,6 +113,7 @@ void session::handle_read(const boost::system::error_code &error,
   res_ = handler->handle_request(req_);
 
   // 3) Send it
+  maybe_compress_response();
   http::async_write(socket_, *res_, [this](const boost::system::error_code &ec, std::size_t bytes) {
     handle_write(ec, bytes);
   });

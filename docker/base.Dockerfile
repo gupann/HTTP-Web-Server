@@ -19,4 +19,5 @@ RUN apt-get update && apt-get install -y \
     gcovr \
     libcmark-gfm-dev \
     libcmark-gfm-extensions-dev \
-    pkg-config
+    pkg-config \
+    zlib1g-dev

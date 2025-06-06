@@ -43,6 +43,8 @@ private:
   std::shared_ptr<HandlerRegistry> registry_;
 
   std::string handler_name_;
+
+  void maybe_compress_response();
 };
 
 } // namespace wasd::http
