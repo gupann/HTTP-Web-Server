@@ -23,14 +23,39 @@ SERVER_PID=""
 # build the code, write a minimal config, start the server, and wait for it to begin listening
 setup_server() {
     echo "[SETUP] Building and starting server..."
+
+    # ----------------------------------------------------------------------
+    # 0. Build the code (only first time in this script run)
+    # ----------------------------------------------------------------------
     cmake -B "$BUILD_DIR" -S . >/dev/null
     cmake --build "$BUILD_DIR" >/dev/null
 
-    # prepare a sample static directory
+    # ----------------------------------------------------------------------
+    # 1. Prepare sample static directory used by existing tests
+    # ----------------------------------------------------------------------
     mkdir -p "$STATIC_ROOT/static1"
     echo "<h1>Hello static1</h1>" > "$STATIC_ROOT/static1/index.html"
 
-    # write config with port + locations
+    # ----------------------------------------------------------------------
+    # 2. Prepare Markdown docs + wrapper template for new tests
+    # ----------------------------------------------------------------------
+    DOCS_DIR="$(mktemp -d)"
+    mkdir -p "$DOCS_DIR/sub"
+    echo '# Hello MD'            > "$DOCS_DIR/index.md"
+    echo '# Subpage'             > "$DOCS_DIR/sub/page.md"
+
+    TPL_FILE="$(mktemp)"
+    cat > "$TPL_FILE" <<TPL
+<!DOCTYPE html>
+<html><head><title>Docs</title></head>
+<body>
+{{content}}
+</body></html>
+TPL
+
+    # ----------------------------------------------------------------------
+    # 3. Write a minimal nginx-style config that references those paths
+    # ----------------------------------------------------------------------
     cat > "$CFG_FILE" <<EOF
 port $PORT;
 
@@ -47,16 +72,29 @@ location /health HealthRequestHandler {}
 location /crud CrudHandler {
     data_path $(mktemp -d)/crud;
 }
+
+location /docs MarkdownHandler {
+    root $DOCS_DIR;
+    template $TPL_FILE;
+}
+
+location /static/docs_assets StaticHandler {
+    root ./static/docs_assets;
+}
 EOF
 
-    "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 & # run server in background
-    SERVER_PID=$! # set SERVER_PID to PID of last background job (server in bg)
+    # ----------------------------------------------------------------------
+    # 4. Launch the server in the background
+    # ----------------------------------------------------------------------
+    "$SERVER_BIN" "$CFG_FILE" >/dev/null 2>&1 &
+    SERVER_PID=$!
 
-    # wait (max 5s) until port accepts connections.
+    # Wait (≤5 s) until the port accepts connections
     for _ in {1..25}; do
-        nc -z localhost "$PORT" &>/dev/null && return # keep probing
-        sleep .2
+        nc -z localhost "$PORT" &>/dev/null && return
+        sleep 0.2
     done
+
     echo "Server failed to listen on port $PORT"
     exit 1
 }
@@ -191,6 +229,68 @@ test_crud_error_handling() {
     [ "$code" -eq 404 ]
 }
 
+# Markdown handler happy-path (HTML render)
+test_markdown_render() {
+    local body ct
+    ct=$(curl -sI "http://localhost:$PORT/docs/index.md" | grep -i '^Content-Type:' | awk '{print $2}' | tr -d '\r')
+    body=$(curl -s  "http://localhost:$PORT/docs/index.md")
+    grep -q "<h1>Hello MD</h1>" <<<"$body" && [ "$ct" = "text/html" ]
+}
+
+# Directory index + 5-second cache
+test_directory_index_cache() {
+    # First hit – expect 200 + listing
+    local first etag second
+    first=$(curl -sD - "http://localhost:$PORT/docs/" -o /dev/null)
+    etag=$(grep -i '^ETag:' <<<"$first" | awk '{print $2}' | tr -d '\r')
+    grep -q "index.md" <<<"$first"
+
+    # Second hit within 5s must return identical ETag (served from cache)
+    second=$(curl -sD - "http://localhost:$PORT/docs/" -o /dev/null)
+    grep -i '^ETag:' <<<"$second" | grep -q "$etag"
+}
+
+# Raw mode
+test_markdown_raw_mode() {
+    local ct body
+    ct=$(curl -sI "http://localhost:$PORT/docs/index.md?raw=1" | grep -i '^Content-Type:' | awk '{print $2}' | tr -d '\r')
+    body=$(curl -s  "http://localhost:$PORT/docs/index.md?raw=1")
+    grep -q "# Hello MD" <<<"$body" && [ "$ct" = "text/markdown" ]
+}
+
+# Conditional GET (If-None-Match)
+test_markdown_304() {
+    local etag
+    etag=$(curl -sD - "http://localhost:$PORT/docs/index.md" -o /dev/null | \
+           grep -i '^ETag:' | awk '{print $2}' | tr -d '\r')
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" \
+           -H "If-None-Match: $etag" \
+           "http://localhost:$PORT/docs/index.md")
+    [ "$code" -eq 304 ]
+}
+
+# Gzip compression (>1 KB + Accept-Encoding)
+test_markdown_gzip() {
+    # generate a big page (>1 KB) on the fly
+    big_md="$DOCS_DIR/big.md"
+    yes 'This is a long line to inflate file size.' | head -n 200 > "$big_md"
+
+    local encoding
+    encoding=$(curl -sI -H "Accept-Encoding: gzip" \
+               "http://localhost:$PORT/docs/big.md" | grep -i '^Content-Encoding:' | awk '{print $2}' | tr -d '\r')
+    [ "$encoding" = "gzip" ]
+}
+
+# Path traversal blocked
+test_markdown_traversal() {
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" \
+          "http://localhost:$PORT/docs/../../etc/passwd")
+    [ "$code" -eq 404 ]
+}
+
+
 # register tests
 
 TESTS=(
@@ -205,6 +305,12 @@ TESTS=(
   test_health_handler
   test_crud_basic_workflow
   test_crud_error_handling
+  test_markdown_render
+  test_directory_index_cache
+  test_markdown_raw_mode
+  test_markdown_304
+  test_markdown_gzip
+  test_markdown_traversal
 )
 
 # main
