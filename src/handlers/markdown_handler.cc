@@ -8,16 +8,15 @@
 #include "handlers/markdown_handler.h"
 #include "real_file_system.h"
 
-#include <sstream>
+#include <chrono>
 #include <iomanip>
-#include <unordered_map> 
-#include <mutex> 
-#include <chrono> 
+#include <mutex>
+#include <sstream>
+#include <unordered_map>
 
 using namespace wasd::http;
 namespace http = boost::beast::http;
 namespace fs = std::filesystem;
-
 
 // Helper to create common error responses for MarkdownHandler
 std::unique_ptr<Response> create_markdown_error_response(http::status status_code,
@@ -36,14 +35,14 @@ std::unique_ptr<Response> create_markdown_error_response(http::status status_cod
 /*  In‑memory cache for directory listings (TTL = 5 s)                */
 /* ------------------------------------------------------------------ */
 struct DirCacheEntry {
-  std::string html;   // rendered + wrapped page
-  std::string etag;   // strong ETag for the page
-  std::string last_modified;   // HTTP-date for directory mtime
+  std::string html;          // rendered + wrapped page
+  std::string etag;          // strong ETag for the page
+  std::string last_modified; // HTTP-date for directory mtime
   std::chrono::steady_clock::time_point saved;
 };
 static std::unordered_map<std::string, DirCacheEntry> g_dir_cache;
 static constexpr std::chrono::seconds kDirCacheTTL{5};
-static std::mutex g_dir_cache_mu;    // simple thread‑safety
+static std::mutex g_dir_cache_mu; // simple thread‑safety
 
 // Read an entire file (≤ 1 MB) into a string; return empty optional on failure
 static std::optional<std::string> read_small_file(const std::shared_ptr<FileSystemInterface> &fs,
@@ -60,10 +59,9 @@ static std::optional<std::string> read_small_file(const std::shared_ptr<FileSyst
 // Convert fs::file_time_type → RFC‑1123 string for HTTP headers
 static std::string http_date_from_fs_time(fs::file_time_type tp) {
   auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                tp - fs::file_time_type::clock::now()
-                + std::chrono::system_clock::now());
+      tp - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
   std::time_t tt = std::chrono::system_clock::to_time_t(sctp);
-  std::tm gmt    = *std::gmtime(&tt);
+  std::tm gmt = *std::gmtime(&tt);
 
   std::ostringstream os;
   os << std::put_time(&gmt, "%a, %d %b %Y %H:%M:%S GMT");
@@ -106,6 +104,38 @@ std::unique_ptr<RequestHandler> markdown_handler::create(const std::string &loca
                                                          std::shared_ptr<FileSystemInterface> fs) {
   return std::make_unique<markdown_handler>(location_path, configured_root, template_path, fs);
 }
+
+/* --- utility ----------------------------------------------------------- */
+static std::string render_markdown_gfm(const std::string &md) {
+  /* 1. create a GFM-capable parser */
+  int options = CMARK_OPT_DEFAULT | CMARK_OPT_UNSAFE; // allow raw HTML
+  cmark_parser *parser = cmark_parser_new(options);
+
+  /* 2. attach desired extensions */
+  const char *exts[] = {"table",    "strikethrough", "autolink", "tagfilter",
+                        "tasklist", "strikethrough", nullptr};
+  for (const char **e = exts; *e; ++e) {
+    if (auto *ext = cmark_find_syntax_extension(*e))
+      cmark_parser_attach_syntax_extension(parser, ext);
+  }
+
+  /* 3. feed input & get AST */
+  cmark_parser_feed(parser, md.c_str(), md.size());
+  cmark_node *doc = cmark_parser_finish(parser);
+
+  /* 4. render HTML with the same extension set */
+  const cmark_llist *ext_list_const = cmark_parser_get_syntax_extensions(parser);
+  cmark_llist *ext_list = const_cast<cmark_llist *>(ext_list_const);
+
+  char *html = cmark_render_html(doc, options, ext_list);
+
+  std::string out(html ? html : "");
+  free(html);
+  cmark_node_free(doc);
+  cmark_parser_free(parser);
+  return out;
+}
+
 std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
   BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Handling request for target: "
                           << std::string(req.target());
@@ -117,18 +147,16 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
   }
 
   // 0. Parse query string
-  std::string target_full(req.target());             // e.g.  "/docs/guide.md?raw=1"
-  const auto qpos        = target_full.find('?');
+  std::string target_full(req.target()); // e.g.  "/docs/guide.md?raw=1"
+  const auto qpos = target_full.find('?');
 
   // Path that we’ll use for all path‑sanitisation logic
-  std::string target_path = target_full.substr(0, qpos);   //  "/docs/guide.md"
+  std::string target_path = target_full.substr(0, qpos); //  "/docs/guide.md"
 
   // Everything after the '?', or empty if no query
-  std::string query       = (qpos == std::string::npos) ? "" 
-                                                        : target_full.substr(qpos + 1);
+  std::string query = (qpos == std::string::npos) ? "" : target_full.substr(qpos + 1);
   // Detect ?raw=1 (allow it to be anywhere in the query string)
   bool raw_requested = (query.find("raw=1") != std::string::npos);
-
 
   // 1. Resolve the requested file path relative to the handler's location_path_
   std::string relative_path_in_docs;
@@ -225,7 +253,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
 
     // 2 ─ Try cache & conditional‐GET
     const std::string canon_dir = canonical_target_path.string();
-    const auto        now       = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
 
     {
       std::lock_guard<std::mutex> lk(g_dir_cache_mu);
@@ -252,7 +280,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
           res->set(http::field::last_modified, entry.last_modified);
           return res;
         }
-      // Serve cached
+        // Serve cached
         auto res = std::make_unique<Response>();
         res->result(http::status::ok);
         res->version(req.version());
@@ -282,8 +310,8 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     list_html << "</ul>\n";
 
     /* 4 ─ Wrap with template (reuse existing logic) */
-    std::string full_page   = list_html.str();
-    bool        wrapped     = false;
+    std::string full_page = list_html.str();
+    bool wrapped = false;
     if (!template_path_.empty()) {
       auto tpl_opt = read_small_file(fs_, template_path_);
       if (tpl_opt) {
@@ -301,11 +329,11 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     }
 
     // 5 ─ Generate ETag & Last-Modified & save to cache
-    std::string etag = "\"" + std::to_string(full_page.size())
-                   + "-" + std::to_string(
-                        std::chrono::duration_cast<std::chrono::seconds>(
-                          now.time_since_epoch()).count())
-                    + "\"";
+    std::string etag =
+        "\"" + std::to_string(full_page.size()) + "-" +
+        std::to_string(
+            std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count()) +
+        "\"";
     auto dir_mtime = fs::last_write_time(canonical_target_path, ec_fs);
     std::string last_modified = http_date_from_fs_time(dir_mtime);
 
@@ -341,34 +369,36 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
                                           "404 Not Found - File does not exist");
   }
   /* ---------- File‑metadata for caching ---------- */
-  auto        file_mtime = fs::last_write_time(final_file_path_str, ec_fs);
-  if (ec_fs) { /*  existing error branch is fine  */ }
+  auto file_mtime = fs::last_write_time(final_file_path_str, ec_fs);
+  if (ec_fs) { /*  existing error branch is fine  */
+  }
 
-  uintmax_t   file_size  = fs::file_size(final_file_path_str, ec_fs);
+  uintmax_t file_size = fs::file_size(final_file_path_str, ec_fs);
 
   // strong ETag: "<size>-<mtime_epoch>"
-  auto mtime_secs = std::chrono::time_point_cast<std::chrono::seconds>(file_mtime)
-                      .time_since_epoch().count();
-  std::string etag          = "\"" + std::to_string(file_size) + "-" +
-                              std::to_string(mtime_secs) + "\"";
+  auto mtime_secs =
+      std::chrono::time_point_cast<std::chrono::seconds>(file_mtime).time_since_epoch().count();
+  std::string etag = "\"" + std::to_string(file_size) + "-" + std::to_string(mtime_secs) + "\"";
   std::string last_modified = http_date_from_fs_time(file_mtime);
 
   /* ---------- Conditional‑GET handling ---------- */
   bool send_304 = false;
 
   if (req.find(http::field::if_none_match) != req.end()) {
-    if (req.at(http::field::if_none_match) == etag) send_304 = true;
+    if (req.at(http::field::if_none_match) == etag)
+      send_304 = true;
   } else if (req.find(http::field::if_modified_since) != req.end()) {
-    if (req.at(http::field::if_modified_since) == last_modified) send_304 = true;
+    if (req.at(http::field::if_modified_since) == last_modified)
+      send_304 = true;
   }
 
   if (send_304) {
     auto res = std::make_unique<Response>();
-    res->result(http::status::not_modified);   // 304
+    res->result(http::status::not_modified); // 304
     res->version(req.version());
     res->set(http::field::etag, etag);
     res->set(http::field::last_modified, last_modified);
-    return res;                                // ── early exit
+    return res; // ── early exit
   }
 
   // 4. File Size Limit (1MB) using std::filesystem
@@ -404,7 +434,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
                                           "Internal Server Error - Could not read file");
   }
   std::string markdown_input = markdown_content_opt.value();
-  
+
   // ---------- 6a.  Raw‑mode early‑return ----------
   if (raw_requested) {
     auto res = std::make_unique<Response>();
@@ -412,7 +442,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     res->version(req.version());
     res->set(http::field::content_type, "text/markdown");
     res->body() = std::move(markdown_input);
-    res->set(http::field::etag,          etag);
+    res->set(http::field::etag, etag);
     res->set(http::field::last_modified, last_modified);
     res->prepare_payload();
 
@@ -421,17 +451,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
   }
 
   /* ---------- 6. Convert Markdown to HTML fragment ---------- */
-  int cmark_options = CMARK_OPT_DEFAULT;
-  char *html_output_c_str =
-      cmark_markdown_to_html(markdown_input.c_str(), markdown_input.length(), cmark_options);
-  if (!html_output_c_str) {
-    BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: cmark_markdown_to_html failed for "
-                             << final_file_path_str;
-    return create_markdown_error_response(http::status::internal_server_error, req.version(),
-                                          "Internal Server Error - Markdown conversion failed");
-  }
-  std::string html_fragment(html_output_c_str);
-  free(html_output_c_str);
+  std::string html_fragment = render_markdown_gfm(markdown_input);
 
   /* ---------- 7. Load wrapper template & inject content ---------- */
   std::string full_page;
@@ -459,7 +479,7 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
   res->version(req.version());
   res->set(http::field::content_type, "text/html");
   res->body() = std::move(full_page);
-  res->set(http::field::etag,          etag);
+  res->set(http::field::etag, etag);
   res->set(http::field::last_modified, last_modified);
   res->prepare_payload();
 
