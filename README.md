@@ -250,6 +250,63 @@ location /my_feature MyNewHandlerNameInConfig {
 2.  Run the server with the updated configuration.
 3.  Test your new handler thoroughly using tools like `curl` or by writing new unit/integration tests.
 
+### Detailed Example: `MarkdownHandler`
+
+The `MarkdownHandler` is responsible for serving Markdown files (`.md`) from a specified root directory. It can render them as HTML (optionally using a template) or serve them as raw Markdown.
+
+**Key Features:**
+
+*   Serves `.md` files.
+*   Renders Markdown to HTML using `cmark-gfm`.
+*   Supports an optional HTML template file to wrap the rendered Markdown content. The template should contain `{{content}}` where the Markdown HTML will be injected.
+*   Supports a `?raw=1` query parameter to serve the original Markdown file with `Content-Type: text/markdown`.
+*   Provides directory listings for navigation, showing only `.md` files and subdirectories.
+*   Implements ETag and Last-Modified based caching for both individual files and directory listings.
+
+**Configuration Options:**
+
+When configuring `MarkdownHandler` in your server's configuration file, you use a `location` block. The handler expects the following parameters within this block:
+
+*   **`root <path_to_markdown_files>` (Required):** Specifies the absolute or relative path to the directory on the server's filesystem where the Markdown files are stored. This is the document root for this handler instance.
+    *   Example: `root /var/www/markdown_docs;`
+*   **`template <path_to_template_html>` (Optional):** Specifies the absolute or relative path to an HTML template file. If provided, the rendered Markdown content will be injected into this template where `{{content}}` is found. If omitted, the raw HTML fragment generated from the Markdown is served.
+    *   Example: `template /etc/server/templates/markdown_wrapper.html;`
+
+**Example Configuration Block:**
+
+```nginx
+# In your server configuration file (e.g., my_config)
+
+location /docs MarkdownHandler {
+  root /srv/http/markdown_files;       # Serve .md files from this directory
+  template /path/to/my_template.html;  # Optional: wrap with this HTML template
+}
+
+```
+
+
+**Deployment Notes for Static Content (gCloud):**
+
+When deploying a web server that uses handlers like `StaticHandler` or `MarkdownHandler` to serve files from the filesystem (e.g., HTML, CSS, JS, images, or Markdown files), you need to ensure these static assets are available on the server instance in Google Cloud (or any other deployment environment).
+
+1.  **Include Assets in Your Deployment Package:**
+    *   If using Docker, your `Dockerfile` should `COPY` these static directories into the image.
+        ```dockerfile
+        # Example: Copying static assets for MarkdownHandler
+        COPY --from=builder /usr/src/project/docs /docs
+        COPY --from=builder /usr/src/project/templates /templates
+        ```
+        Then, your server configuration would point to these paths within the container (e.g., `root /app/docs_content;`).
+    *   If deploying directly to a VM, ensure your deployment scripts (e.g., using `gcloud compute scp` or startup scripts) copy these asset directories to the correct locations on the VM's filesystem that your server configuration expects.
+
+2.  **Configuration Paths:**
+    *   Ensure the `root` (for `StaticHandler`, `MarkdownHandler`) and `template` (for `MarkdownHandler`) paths in your server configuration file correctly point to where these assets are located *within the deployed environment* (e.g., inside the Docker container or on the VM).
+
+3.  **Permissions:**
+    *   The user account running the web server process must have read access to these static asset directories and files.
+
+For `MarkdownHandler` and `StaticHandler`, the primary method is to bundle the necessary files with your application deployment.
+
 ## Core Interfaces
 
 ### RequestHandler Interface (Common API)
