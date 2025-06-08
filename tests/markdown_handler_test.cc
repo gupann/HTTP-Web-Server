@@ -355,3 +355,73 @@ TEST_F(MarkdownHandlerDirectoryTest, DirectoryConditionalGetSinceReturns304) {
   EXPECT_EQ(res2->result(), http::status::not_modified);
 }
 
+/* ------------------------------------------------------------------ */
+/* Extra: raw‑mode still gets ETag + 304 handling                     */
+/* ------------------------------------------------------------------ */
+TEST_F(MarkdownHandlerDirectoryTest, RawModeConditionalGet) {
+  const std::string body = "# Raw Page\nJust markdown.";
+  write_md("raw.md", body);
+
+  // First request (raw)
+  Request r1 = make_get_request("/docs/raw.md?raw=1");
+  auto    res1 = handler->handle_request(r1);
+  ASSERT_EQ(res1->result(), http::status::ok);
+  ASSERT_EQ(res1->at(http::field::content_type), "text/markdown");
+  std::string etag = std::string(res1->at(http::field::etag));
+  ASSERT_FALSE(etag.empty());
+
+  // Second request with If‑None‑Match
+  Request r2 = make_get_request("/docs/raw.md?raw=1");
+  r2.set(http::field::if_none_match, etag);
+  auto res2 = handler->handle_request(r2);
+  EXPECT_EQ(res2->result(), http::status::not_modified);
+}
+
+/* ------------------------------------------------------------------ */
+/* Template wrapper injects {{content}} correctly                      */
+/* ------------------------------------------------------------------ */
+TEST_F(MarkdownHandlerDirectoryTest, TemplateInjectionWorks) {
+  // 1.  Make a tiny template file with an obvious marker
+  const fs::path tpl = temp_root / "wrapper.html";
+  const std::string tpl_body =
+      "<html><head><title>TPL</title></head><body>\n"
+      "<header>HEADER</header>\n"
+      "{{content}}\n"
+      "<footer>FOOTER</footer>\n"
+      "</body></html>";
+  write_real_file(tpl.string(), tpl_body);
+
+  // 2.  Re‑create handler that uses this template
+  handler = std::make_unique<markdown_handler>("/docs",
+                                               temp_root.string(),
+                                               tpl.string(),
+                                               real_fs);
+
+  // 3.  Markdown file
+  write_md("page.md", "# Heading\nBody");
+  auto res = handler->handle_request(make_get_request("/docs/page.md"));
+
+  ASSERT_EQ(res->result(), http::status::ok);
+  const std::string &html = res->body();
+
+  /* Must contain outer chrome AND converted Markdown */
+  EXPECT_NE(html.find("<header>HEADER</header>"), std::string::npos);
+  EXPECT_NE(html.find("<footer>FOOTER</footer>"), std::string::npos);
+  EXPECT_NE(html.find("<h1>Heading</h1>"),        std::string::npos);
+}
+
+/* ------------------------------------------------------------------ */
+/* File‑level If‑Modified‑Since returns 304                            */
+/* ------------------------------------------------------------------ */
+TEST_F(MarkdownHandlerDirectoryTest, FileConditionalGetSinceReturns304) {
+  write_md("cond.md", "# Cond\n");
+  auto first = handler->handle_request(make_get_request("/docs/cond.md"));
+  ASSERT_EQ(first->result(), http::status::ok);
+  ASSERT_TRUE(first->find(http::field::last_modified) != first->end());
+  std::string lm = std::string(first->at(http::field::last_modified));
+
+  Request r2 = make_get_request("/docs/cond.md");
+  r2.set(http::field::if_modified_since, lm);
+  auto second = handler->handle_request(r2);
+  EXPECT_EQ(second->result(), http::status::not_modified);
+}

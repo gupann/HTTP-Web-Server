@@ -290,6 +290,21 @@ test_markdown_traversal() {
     [ "$code" -eq 404 ]
 }
 
+# Wrapper template appears in rendered HTML
+test_template_injection() {
+    body=$(curl -s "http://localhost:$PORT/docs/index.md")
+    grep -q "<title>Docs</title>" <<<"$body"
+}
+
+# File‑level If‑Modified‑Since returns 304
+test_markdown_304_since() {
+    lm=$(curl -sD - "http://localhost:$PORT/docs/index.md" -o /dev/null \
+         | grep -i '^Last-Modified:' | cut -d' ' -f2- | tr -d '\r')
+    code=$(curl -s -o /dev/null -w "%{http_code}" \
+           -H "If-Modified-Since: $lm" \
+           "http://localhost:$PORT/docs/index.md")
+    [ "$code" -eq 304 ]
+}
 
 # register tests
 
@@ -311,6 +326,8 @@ TESTS=(
   test_markdown_304
   test_markdown_gzip
   test_markdown_traversal
+  test_template_injection
+  test_markdown_304_since
 )
 
 # main
