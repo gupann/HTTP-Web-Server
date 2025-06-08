@@ -488,6 +488,12 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
         full_page.replace(pos, placeholder.length(), html_fragment);
         wrapped = true;
       }
+    } else {
+      // Template file specified in config but could not be read. This is an error.
+      BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: Failed to read template file: "
+                               << template_path_;
+      return create_markdown_error_response(http::status::internal_server_error, req.version(),
+                                            "Internal Server Error - Could not load template");
     }
   }
   if (!wrapped) {

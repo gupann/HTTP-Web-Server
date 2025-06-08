@@ -106,6 +106,7 @@ gtest_discover_tests(crud_handler_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_
 add_executable(markdown_handler_test tests/markdown_handler_test.cc)
 target_link_libraries(markdown_handler_test
     request_handler_lib          # markdown_handler + its deps
+    config_parser                # For NginxConfig in tests
     file_system                  # MockFileSystem helpers
     logger                       # shared logging lib
     gmock                        # optional, needed only if you use EXPECT_CALL
