@@ -293,17 +293,39 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
       }
     }
 
-    // 3 ─ Scan directory for .md, build the <ul>…
+    // 3 ─ Scan directory for .md and directories, build the <ul>…
     std::vector<std::string> md_files;
+    std::vector<std::string> sub_directories;
+
+    // fs::directory_iterator sets ec_fs if canonical_target_path cannot be opened.
     for (const auto &p : fs::directory_iterator(canonical_target_path, ec_fs)) {
-      if (!ec_fs && p.is_regular_file() && p.path().extension() == ".md") {
+      if (p.is_regular_file() && p.path().extension() == ".md") {
         md_files.push_back(p.path().filename().string());
+      } else if (p.is_directory()) {
+        sub_directories.push_back(p.path().filename().string());
       }
     }
-    std::sort(md_files.begin(), md_files.end());
+
+    if (ec_fs) {
+      BOOST_LOG_TRIVIAL(error) << "MarkdownHandler: Error during directory iteration: "
+                               << ec_fs.message();
+      return create_markdown_error_response(http::status::internal_server_error, req.version(),
+                                            "Internal Server Error - Directory iteration failed");
+    }
+
+    std::sort(sub_directories.begin(), sub_directories.end()); // Sort directories
+    std::sort(md_files.begin(), md_files.end());               // Sort markdown files
 
     std::ostringstream list_html;
     list_html << "<h1>Index of " << target_path << "</h1>\n<ul>\n";
+
+    // List directories first
+    for (const auto &dir_name : sub_directories) {
+      list_html << "  <li><a href=\"" << dir_name << "/" << "\">" << dir_name << "/"
+                << "</a></li>\n";
+    }
+
+    // Then list markdown files
     for (const auto &f : md_files) {
       list_html << "  <li><a href=\"" << f << "\">" << f << "</a></li>\n";
     }
