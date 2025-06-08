@@ -10,10 +10,15 @@
 
 #include <sstream>
 #include <iomanip>
+#include <unordered_map> 
+#include <mutex> 
+#include <chrono> 
 
 using namespace wasd::http;
 namespace http = boost::beast::http;
 namespace fs = std::filesystem;
+
+
 // Helper to create common error responses for MarkdownHandler
 std::unique_ptr<Response> create_markdown_error_response(http::status status_code,
                                                          unsigned http_version,
@@ -26,6 +31,19 @@ std::unique_ptr<Response> create_markdown_error_response(http::status status_cod
   res->prepare_payload();
   return res;
 }
+
+/* ------------------------------------------------------------------ */
+/*  In‑memory cache for directory listings (TTL = 5 s)                */
+/* ------------------------------------------------------------------ */
+struct DirCacheEntry {
+  std::string html;   // rendered + wrapped page
+  std::string etag;   // strong ETag for the page
+  std::string last_modified;   // HTTP-date for directory mtime
+  std::chrono::steady_clock::time_point saved;
+};
+static std::unordered_map<std::string, DirCacheEntry> g_dir_cache;
+static constexpr std::chrono::seconds kDirCacheTTL{5};
+static std::mutex g_dir_cache_mu;    // simple thread‑safety
 
 // Read an entire file (≤ 1 MB) into a string; return empty optional on failure
 static std::optional<std::string> read_small_file(const std::shared_ptr<FileSystemInterface> &fs,
@@ -138,9 +156,9 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     return create_markdown_error_response(http::status::not_found, req.version(),
                                           "404 Not Found - Path mismatch");
   }
-  if (relative_path_in_docs.empty() || relative_path_in_docs.back() == '/') {
-    relative_path_in_docs += "index.md";
-  }
+  // if (relative_path_in_docs.empty() || relative_path_in_docs.back() == '/') {
+  //   relative_path_in_docs += "index.md";
+  // }
   fs::path target_fs_path = fs::path(configured_root_) / relative_path_in_docs;
   // 2. Path sanitization
   fs::path canonical_root;
@@ -188,6 +206,126 @@ std::unique_ptr<Response> markdown_handler::handle_request(const Request &req) {
     return create_markdown_error_response(http::status::internal_server_error, req.version(),
                                           "Internal Server Error - Configuration issue");
   }
+
+  /* ================================================================== */
+  /*  D‑1: Handle requests that resolve to a *directory*                */
+  /* ================================================================== */
+  bool is_dir_request = fs::is_directory(canonical_target_path, ec_fs);
+  if (is_dir_request) {
+
+    /* 1 ─ Ensure trailing “/”; if missing, 301 redirect */
+    if (!target_path.empty() && target_path.back() != '/') {
+      auto res = std::make_unique<Response>();
+      res->result(http::status::moved_permanently);
+      res->version(req.version());
+      res->set(http::field::location, target_path + "/");
+      res->prepare_payload();
+      return res;
+    }
+
+    // 2 ─ Try cache & conditional‐GET
+    const std::string canon_dir = canonical_target_path.string();
+    const auto        now       = std::chrono::steady_clock::now();
+
+    {
+      std::lock_guard<std::mutex> lk(g_dir_cache_mu);
+      auto it = g_dir_cache.find(canon_dir);
+      if (it != g_dir_cache.end() && now - it->second.saved < kDirCacheTTL) {
+        auto &entry = it->second;
+        // If‐None‐Match
+        if (req.find(http::field::if_none_match) != req.end() &&
+            req.at(http::field::if_none_match) == entry.etag) {
+          auto res = std::make_unique<Response>();
+          res->result(http::status::not_modified);
+          res->version(req.version());
+          res->set(http::field::etag, entry.etag);
+          res->set(http::field::last_modified, entry.last_modified);
+          return res;
+        }
+        // If‐Modified‐Since
+        if (req.find(http::field::if_modified_since) != req.end() &&
+            req.at(http::field::if_modified_since) == entry.last_modified) {
+          auto res = std::make_unique<Response>();
+          res->result(http::status::not_modified);
+          res->version(req.version());
+          res->set(http::field::etag, entry.etag);
+          res->set(http::field::last_modified, entry.last_modified);
+          return res;
+        }
+      // Serve cached
+        auto res = std::make_unique<Response>();
+        res->result(http::status::ok);
+        res->version(req.version());
+        res->set(http::field::content_type, "text/html");
+        res->set(http::field::etag, entry.etag);
+        res->set(http::field::last_modified, entry.last_modified);
+        res->body() = entry.html;
+        res->prepare_payload();
+        return res;
+      }
+    }
+
+    // 3 ─ Scan directory for .md, build the <ul>…
+    std::vector<std::string> md_files;
+    for (const auto &p : fs::directory_iterator(canonical_target_path, ec_fs)) {
+      if (!ec_fs && p.is_regular_file() && p.path().extension() == ".md") {
+        md_files.push_back(p.path().filename().string());
+      }
+    }
+    std::sort(md_files.begin(), md_files.end());
+
+    std::ostringstream list_html;
+    list_html << "<h1>Index of " << target_path << "</h1>\n<ul>\n";
+    for (const auto &f : md_files) {
+      list_html << "  <li><a href=\"" << f << "\">" << f << "</a></li>\n";
+    }
+    list_html << "</ul>\n";
+
+    /* 4 ─ Wrap with template (reuse existing logic) */
+    std::string full_page   = list_html.str();
+    bool        wrapped     = false;
+    if (!template_path_.empty()) {
+      auto tpl_opt = read_small_file(fs_, template_path_);
+      if (tpl_opt) {
+        full_page = *tpl_opt;
+        const std::string placeholder = "{{content}}";
+        auto pos = full_page.find(placeholder);
+        if (pos != std::string::npos) {
+          full_page.replace(pos, placeholder.length(), list_html.str());
+          wrapped = true;
+        }
+      }
+    }
+    if (!wrapped) {
+      full_page = list_html.str();
+    }
+
+    // 5 ─ Generate ETag & Last-Modified & save to cache
+    std::string etag = "\"" + std::to_string(full_page.size())
+                   + "-" + std::to_string(
+                        std::chrono::duration_cast<std::chrono::seconds>(
+                          now.time_since_epoch()).count())
+                    + "\"";
+    auto dir_mtime = fs::last_write_time(canonical_target_path, ec_fs);
+    std::string last_modified = http_date_from_fs_time(dir_mtime);
+
+    {
+      std::lock_guard<std::mutex> lk(g_dir_cache_mu);
+      g_dir_cache[canon_dir] = {full_page, etag, last_modified, now};
+    }
+
+    /* 6 ─ Return response */
+    auto res = std::make_unique<Response>();
+    res->result(http::status::ok);
+    res->version(req.version());
+    res->set(http::field::content_type, "text/html");
+    res->set(http::field::etag, etag);
+    res->set(http::field::last_modified, last_modified);
+    res->body() = std::move(full_page);
+    res->prepare_payload();
+    return res;
+  }
+
   if (target_fs_path.extension() != ".md") {
     BOOST_LOG_TRIVIAL(info) << "MarkdownHandler: Requested file is not a .md file: "
                             << target_fs_path.string();
