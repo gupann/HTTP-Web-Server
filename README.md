@@ -455,3 +455,14 @@ exit 0
 ```bash
 cmake --build build --target clang_format
 ```
+
+## Members
+*We used our UCLA email addresses on Gerrit so some member's PRs show up PRs by Devel User.
+
+Anmol Gupta - shows up as Devel User
+
+Shlok Jhawar
+
+William Smith
+
+David Han - shows up as Devel User
